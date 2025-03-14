@@ -1,9 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import uvicorn
 from pydantic import BaseModel
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
+from typing import List
 #Definimos la enumeracion para el rol de la comanda
 #Y la insertamos en la clase siguiente para reconocer el rol
 
@@ -24,6 +25,23 @@ class RoleEnum(str, Enum):
 class RoleOrders(str, Enum):
     Libre ="Libre"
     Ocupado ="Ocupado"
+
+# EL cliente ingresara la categoria con un input el cual sera registrada
+#en la base de datos, ver desde el front y actualizar en la abse de datos
+class CategoryEnum(str, Enum):
+    input = "input"
+    output = "output"
+
+
+#Clases de enum para las mesas identificar ocupado y libre 
+class TablesEnum(str, Enum):
+    Libre ="Libre"
+    Ocupado ="Ocupado"
+
+class PaymentMethodEnum(str, Enum):
+    efectivo = "efectivo"
+    tarjeta = "tarjeta"
+    pasarela = "pasarela"
   
 #BAse model # A Pydantic model
 #BaseModel es una clase de Pydantic que nos permite definir un modelo de datos
@@ -55,29 +73,18 @@ class Orders(BaseModel):
     total:Decimal
     orderscol:str
 
-#Clases de enum para las mesas identificar ocupado y libre 
-class TablesEnum(str, Enum):
-    Libre ="Libre"
-    Ocupado ="Ocupado"
-
-
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada
 #se inserta el id de la mesa, el numero y la capacidad
-class tables(BaseModel):
+class Tables(BaseModel):
     id_tables:int
     number:int
     capacity:int
     state:TablesEnum
 
-# EL cliente ingresara la categoria con un input el cual sera registrada
-#en la base de datos, ver desde el front y actualizar en la abse de datos
-class CategoryEnum(str, Enum):
-    input = "input"
-    output = "output"
-  
+
 #Esquema de los productos 
-class Products():
+class Products(BaseModel):
     id_products:int
     name:str
     description:str
@@ -110,7 +117,15 @@ class Payments(BaseModel):
     payment_method:PaymentMethodEnum
     amount:Decimal
     date_time:datetime
-     
+
+#Se crean las listas de los usuarios, ordenes, mesas, productos, detalles de ordenes y pagos
+#Para poder almacenar los datos temporales en la base de datos de la memoria
+usuarios: List[User] = []
+orders: List[Orders] = []
+tables: List[Tables] = []
+products: List[Products] = []
+orders_details: List[OrdersDetails] = []
+payments: List[Payments] = []
 
 app = FastAPI()
 usuarios = []
@@ -171,7 +186,40 @@ def actualizar_usuario(user_id:int, updateUser:User): #Actualizamos el usuario a
             return {"mensaje": "Usuario actualizado exitosamente"}
     return {"mensaje": "Usuario no encontrado"}
 
+@app.get("/tables", response_model=List[Tables]) #Obtenemos las mesas
+def obtener_las_mesas():
+    return tables
 
+@app.post("/tables", response_model=dict) #Creamos las mesas
+def crear_mesa(table: Tables):
+    tables.append(table)
+    return {"mensaje": "Mesa creada exitosamente"}
+
+@app.get("/orders", response_model=List[Orders])#Obtenemos las ordenes
+def obtener_ordenes():
+    return orders
+
+@app.post("/orders", response_model=dict)#Creamos las ordenes
+def creamos_ordenes(order: Orders):
+    orders.append(order)
+    return {"mensaje": "Orden creada exitosamente"}
+
+@app.get("/products", response_model=List[Products])#Obtenemos los productos
+def obtenemos_productos():
+    return products
+
+@app.post("/products", response_model=dict)#Creamos los productos
+def creamos_producto(product: Products):
+    products.append(product)
+    return {"mensaje": "Producto creado exitosamente"}#Mensaje de producto creado exitosamente
+
+@app.put("/tables/{table_id}")#Actualizamos las mesas
+def actualizamos_mesa(table_id: int, table: Tables):#Actualizamos las mesas apartir del id de la mesa y la mesa 
+    for index, t in enumerate(tables):
+        if t.id_tables == table_id:
+            tables[index] = table
+            return {"mensaje": "Mesa actualizada"}
+    raise HTTPException(status_code=404, detail="Mesa no encontrada")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", port = 8000, reload=True)
