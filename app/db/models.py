@@ -30,8 +30,8 @@ class TablesEnum(str, PyEnum):
     Ocupado = "Ocupado"
 
 class CategoryEnum(str, PyEnum):
-    input = "input"
-    output = "output"
+    input = "activo"
+    output = "inactivo"
 
 class PaymentMethodEnum(str, PyEnum):   
     efectivo = "efectivo"

@@ -32,8 +32,8 @@ class TablesEnum(str, Enum):
 # EL cliente ingresara la categoria con un input el cual sera registrada
 #en la base de datos, ver desde el front y actualizar en la abse de datos
 class CategoryEnum(str, Enum):
-    input = "input"
-    output = "output"
+    input = "activo"
+    output = "inactivo"
 
 
 #Para el metodo de pago
