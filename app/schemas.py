@@ -64,11 +64,11 @@ class PaymentMethodEnum(str, Enum):
 #user" o "client".
 #El modelo de datos se puede usar para validar y serializar datos.
 class User(BaseModel):
-    id_users: int 
+    #id_users: int | N
     name: str
     email: str | None = None
     password: str 
-    rol: RoleEnum  
+    rol: RoleEnum  | None = None
 
     class Config:
         orm_mode = True #mapéo de SQLAlchemy
@@ -147,7 +147,7 @@ class Payments(BaseModel):
         orm_mode = True
 
 class Login(BaseModel):
-    name: str 
+    email: str 
     password: str
 
 

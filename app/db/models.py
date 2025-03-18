@@ -61,7 +61,7 @@ class User(Base):
     name = Column(String(50), unique=True, nullable = False)
     email = Column(String(50), unique=True, nullable = False)
     password = Column(String(255),  nullable = False)
-    rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False)
+    rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
     # Relaciones
     orders = relationship("Orders", back_populates="user")
     payments = relationship("Payments", back_populates="user")

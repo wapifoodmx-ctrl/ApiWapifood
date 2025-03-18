@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 import uvicorn
 from app.routers import user, tables, products, orders, payments, auth
 from app.db.database import Base, engine
+from fastapi.middleware.cors import CORSMiddleware
+
 
 
 #def creeate_tables():
@@ -22,5 +24,23 @@ app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(payments.router)
 
+
 if __name__ == "__main__":
     uvicorn.run("main:app", port = 8000, reload=True)
+
+
+# Configuración de CORS
+origins = [
+    "http://localhost:3000",  # Origen de tu frontend
+    "http://localhost:5173",  # Otro puerto común para Vite/React
+    "http://127.0.0.1:3000",  # Variación del localhost
+    # Agrega más orígenes según necesites
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Lista de orígenes permitidos
+    allow_credentials=True,  # Permitir cookies y autenticación
+    allow_methods=["*"],     # Métodos HTTP permitidos (GET, POST, etc.)
+    allow_headers=["*"],     # Headers permitidos
+)

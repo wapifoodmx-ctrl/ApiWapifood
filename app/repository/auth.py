@@ -6,11 +6,11 @@ from app.token import create_access_token
 from datetime import timedelta
 
 def auth_user(usuario, db:Session):
-    user = db.query(models.User).filter(models.User.name == usuario.username).first()
+    user = db.query(models.User).filter(models.User.email == usuario.email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"""Usuario no encontrado con el {usuario.username}"""
+            detail=f"""Usuario no encontrado con el {usuario.email}"""
         )
     #print("Este es la contraseña : ---->", Hash.verify_password(usuario.password, user.password))
     if not Hash.verify_password(usuario.password, user.password):
@@ -20,6 +20,6 @@ def auth_user(usuario, db:Session):
         )
 
     access_token = create_access_token(
-        data={"sub": user.name}
+        data={"sub": user.email}
     )
     return {"access_token": access_token, "token_type": "bearer"}
