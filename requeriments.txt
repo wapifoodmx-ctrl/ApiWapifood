@@ -6,3 +6,9 @@ alembic
 passlib[bcrypt]
 python-jose[cryptograhpy]
 pymysql
+cryptography
+python-multipart
+pytest
+httpx
+requests
+main

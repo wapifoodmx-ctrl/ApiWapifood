@@ -3,8 +3,8 @@ from pydantic import BaseModel
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
-from typing import List
-
+from typing import List, Union
+from app.db.models import RoleEnum, RoleOrders, TablesEnum, CategoryEnum, PaymentMethodEnum
 #Para el rol de los usuarios
 #La enumeración es una lista de valores que se pueden asignar a una variable.
 #En este caso, el rol puede ser "admin
@@ -44,6 +44,11 @@ class PaymentMethodEnum(str, Enum):
     pasarela = "pasarela"
   
 
+class PaymentMethodEnum(str, Enum):
+    efectivo = "efectivo"
+    tarjeta = "tarjeta"
+    pasarela = "pasarela"
+
 
 
 
@@ -59,14 +64,27 @@ class PaymentMethodEnum(str, Enum):
 #user" o "client".
 #El modelo de datos se puede usar para validar y serializar datos.
 class User(BaseModel):
-    id_users: int
+    id_users: int 
     name: str
-    email: str
-    password: str
+    email: str | None = None
+    password: str 
     rol: RoleEnum  
 
+    class Config:
+        orm_mode = True #mapéo de SQLAlchemy
+
 class UserId(BaseModel):
-    id_user:int
+    id_user:int 
+
+# Esquema para mostrar un usuario (sin password, para GET)
+class ShowUser(BaseModel):
+    id_users: int| None = None
+    name: str 
+    email: str | None = None
+    rol: RoleEnum 
+
+    class Config:
+        orm_mode = True
 
 #class Orders(BaseModel):
 class Orders(BaseModel):
@@ -76,6 +94,8 @@ class Orders(BaseModel):
     date_time:datetime
     total:Decimal
     orderscol:str
+    class Config:
+        orm_mode = True
 
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada
@@ -85,6 +105,8 @@ class Tables(BaseModel):
     number:int
     capacity:int
     state:TablesEnum
+    class Config:
+        orm_mode = True
 
 
 #Esquema de los productos 
@@ -95,6 +117,8 @@ class Products(BaseModel):
     price:Decimal
     stock:int 
     category:CategoryEnum  
+    class Config:
+        orm_mode = True
 #Esquema de los detalles de las ordenes
 #Se inserta el id de la orden, el id del producto, la cantidad, el precio unitario
 #y el subtotal
@@ -105,12 +129,10 @@ class OrdersDetails(BaseModel):
     quantity:int
     unit_price:Decimal
     subtotal:Decimal
+    class Config:
+        orm_mode = True
 
 
-class PaymentMethodEnum(str, Enum):
-    efectivo = "efectivo"
-    tarjeta = "tarjeta"
-    pasarela = "pasarela"
 
 #Esquema de los pagos
 #Se inserta el id del pago, el id de la orden, el metodo de pago, 
@@ -121,8 +143,13 @@ class Payments(BaseModel):
     payment_method:PaymentMethodEnum
     amount:Decimal
     date_time:datetime
+    class Config:
+        orm_mode = True
 
-products: List[Products] = []
-orders_details: List[OrdersDetails] = []
-payments: List[Payments] = []
+class Login(BaseModel):
+    name: str 
+    password: str
 
+
+class TokenData(BaseModel):
+    name: Union[str, None] = None

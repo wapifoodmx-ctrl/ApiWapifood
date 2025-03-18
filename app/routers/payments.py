@@ -8,9 +8,6 @@ from app.schemas import Tables
 
 
 
-router = APIRouter(
-      prefix="/user",
-      tags=["User"],
-)
+router = APIRouter()
 
 

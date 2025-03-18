@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException
 import uvicorn
-from app.routers import user, tables, products, orders, payments
+from app.routers import user, tables, products, orders, payments, auth
 from app.db.database import Base, engine
 
 
-def creeate_tables():
-    Base.metadata.create_all(bind=engine)
-creeate_tables()
+#def creeate_tables():
+# Base.metadata.create_all(bind=engine)
+#creeate_tables()
 #Definimos la enumeracion para el rol de la comanda
 #Y la insertamos en la clase siguiente para reconocer el rol
 #get para solicitar datos 
@@ -15,6 +15,7 @@ creeate_tables()
 #delete para eliminar datos
 app = FastAPI() 
 app.include_router(user.router)
+app.include_router(auth.router)
 # Incluir los routers con prefijos específicos
 app.include_router(tables.router)
 app.include_router(products.router)

@@ -1,26 +1,27 @@
-from fastapi import APIRouter
-from app.schemas import User, UserId
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 from typing import List
-from app.schemas import Orders
-from typing import List
+from app.db.database import get_db
+from app.db.models import Orders as OrdersModel  # Modelo de SQLAlchemy
+from app.schemas import Orders as OrdersSchema  # Esquema Pydantic
 
-
-usuarios: List[User] = []
-orders: List[Orders]= []
-
-
- 
 router = APIRouter(
-      prefix="/user",
-      tags=["User"],
+    prefix="/orders",
+    tags=["Orders"],
 )
 
+@router.get("/orders", response_model=List[OrdersSchema])
+def obtener_ordenes(db: Session = Depends(get_db)):
+    """Obtiene todas las órdenes de la base de datos."""
+    ordenes = db.query(OrdersModel).all()
+    return ordenes
 
-@router.get("/orders", response_model=List[Orders])#Obtenemos las ordenes
-def obtener_ordenes():
-    return orders
-
-@router.post("/orders", response_model=dict)#Creamos las ordenes
-def creamos_ordenes(order: Orders):
-    orders.append(order)
+@router.post("/orders", response_model=dict)
+def creamos_ordenes(order: OrdersSchema, db: Session = Depends(get_db)):
+    """Crea una nueva orden en la base de datos."""
+    # Convertir el esquema Pydantic a un modelo SQLAlchemy
+    db_order = OrdersModel(**order.dict())
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
     return {"mensaje": "Orden creada exitosamente"}
