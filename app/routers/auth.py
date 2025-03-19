@@ -3,19 +3,31 @@ from app.db.database import get_db
 from sqlalchemy.orm import Session
 from app.schemas import Login
 from app.repository import auth
-#from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 
 router = APIRouter(
     prefix="/login",
     tags=["Login"],
 )
+
+# @router.post("/", status_code=status.HTTP_200_OK)
+# def login(
+#     form_data: OAuth2PasswordRequestForm = Depends(),  # Soporta form-data
+#     db: Session = Depends(get_db)
+# ):
+#     # Convierte form_data a Login
+#     user = Login(email=form_data.username, password=form_data.password)
+#     auth_token = auth.auth_user(user, db)
+#     return auth_token
+
+
 @router.post("/", status_code=status.HTTP_200_OK)
 def login(user: Login = Body(...), db: Session = Depends(get_db)):
     auth_token = auth.auth_user(user, db)
     return auth_token
 
-#@router.post("/", status_code=status.HTTP_200_OK)
-#def login(user: Login = Depends(), db: Session = Depends(get_db)):
+# @router.post("/", status_code=status.HTTP_200_OK)
+# def login(user: Login = Depends(), db: Session = Depends(get_db)):
 #  auth_token = auth.auth_user(user, db)
 #  return auth_token
 

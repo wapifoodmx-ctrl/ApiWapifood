@@ -71,7 +71,7 @@ class User(BaseModel):
     rol: RoleEnum  | None = None
 
     class Config:
-        orm_mode = True #mapéo de SQLAlchemy
+        from_attributes = True
 
 class UserId(BaseModel):
     id_user:int 
@@ -84,54 +84,52 @@ class ShowUser(BaseModel):
     rol: RoleEnum 
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 #class Orders(BaseModel):
 class Orders(BaseModel):
-    id_orders: int
+    #id_orders: int
     mesa_id: int
     state:RoleOrders
     date_time:datetime
     total:Decimal
     orderscol:str
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada
 #se inserta el id de la mesa, el numero y la capacidad
 class Tables(BaseModel):
-    id_tables:int
+    #id_tables:int
     number:int
     capacity:int
     state:TablesEnum
     class Config:
-        orm_mode = True
-
+        from_attributes = True
 
 #Esquema de los productos 
 class Products(BaseModel):
-    id_products:int
+    #id_products:int
     name:str
     description:str
     price:Decimal
     stock:int 
     category:CategoryEnum  
     class Config:
-        orm_mode = True
+        from_attributes = True
 #Esquema de los detalles de las ordenes
 #Se inserta el id de la orden, el id del producto, la cantidad, el precio unitario
 #y el subtotal
 class OrdersDetails(BaseModel):
-    id_orders_details:int
+    #id_orders_details:int
     order_id:int
     product_id:int
     quantity:int
     unit_price:Decimal
     subtotal:Decimal
     class Config:
-        orm_mode = True
-
+        from_attributes = True
 
 
 #Esquema de los pagos
@@ -144,11 +142,13 @@ class Payments(BaseModel):
     amount:Decimal
     date_time:datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class Login(BaseModel):
     email: str 
     password: str
+    class Config:
+        from_attributes = True  # Para Pydantic V2
 
 
 class TokenData(BaseModel):
