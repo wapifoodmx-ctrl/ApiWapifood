@@ -64,7 +64,7 @@ class PaymentMethodEnum(str, Enum):
 #user" o "client".
 #El modelo de datos se puede usar para validar y serializar datos.
 class User(BaseModel):
-    #id_users: int | N
+    id_users: int | None = None
     name: str
     email: str | None = None
     password: str 
@@ -116,6 +116,7 @@ class Products(BaseModel):
     price:Decimal
     stock:int 
     category:CategoryEnum  
+    owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True
 #Esquema de los detalles de las ordenes

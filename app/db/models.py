@@ -66,7 +66,7 @@ class User(Base):
     orders = relationship("Orders", back_populates="user")
     payments = relationship("Payments", back_populates="user")
     tables = relationship("Tables", back_populates="user")
-    #products = relationship("Products", back_populates="owner")  # Relación inversa
+    products = relationship("Products", back_populates="owner")  # Relación inversa
 
 
 # Orders es una clase que hereda de Base de SQLAlchemy
@@ -110,7 +110,10 @@ class Products(Base):
     price = Column(Decimal(10, 2))
     stock = Column(Integer)
     category = Column(SQLAlchemyEnum(CategoryEnum), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
+    #Relaciones
     details = relationship("OrdersDetails", back_populates="product")
+    owner = relationship("User", back_populates="products")  # Relación inversa
 
 
 
