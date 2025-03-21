@@ -23,7 +23,7 @@ ALGORITHM = "HS256"
 # Tiempo de expiración del token en minutos.
 # Define cuánto tiempo será válido un token antes de expirar.
 # """
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+#ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 
 def create_access_token(data: dict):
@@ -41,8 +41,9 @@ def create_access_token(data: dict):
     # """
     # Calcula la fecha de expiración del token sumando el tiempo de expiración definido.
     # """
-    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    # expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    # to_encode.update({"exp": expire})
+    
     
     # """
     # Codifica los datos y genera el token JWT utilizando la clave secreta y el algoritmo definido.

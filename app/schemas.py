@@ -116,7 +116,7 @@ class Products(BaseModel):
     price:Decimal
     stock:int 
     category:CategoryEnum  
-    owner_id: int | None = None  # Añadir owner_id 
+    #owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True
 #Esquema de los detalles de las ordenes
