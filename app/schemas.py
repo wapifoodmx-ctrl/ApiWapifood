@@ -4,7 +4,7 @@ from enum import Enum
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Union
-from app.db.models import RoleEnum, RoleOrders, TablesEnum, CategoryEnum, PaymentMethodEnum
+from app.db.models import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum
 #Para el rol de los usuarios
 #La enumeración es una lista de valores que se pueden asignar a una variable.
 #En este caso, el rol puede ser "admin
@@ -29,20 +29,16 @@ class TablesEnum(str, Enum):
     Ocupado ="Ocupado"
 
 
-# EL cliente ingresara la categoria con un input el cual sera registrada
-#en la base de datos, ver desde el front y actualizar en la abse de datos
-class CategoryEnum(str, Enum):
-    input = "activo"
-    output = "inactivo"
-
-
 #Para el metodo de pago
 #La enumeración es una lista de valores que se pueden asignar a una variable.
 class PaymentMethodEnum(str, Enum):
     efectivo = "efectivo"
     tarjeta = "tarjeta"
     pasarela = "pasarela"
-  
+
+class StatusEnum(str, Enum):
+    activo = "activo"
+    inactivo = "inactivo"
 
 class PaymentMethodEnum(str, Enum):
     efectivo = "efectivo"
@@ -104,18 +100,18 @@ class Tables(BaseModel):
     #id_tables:int
     number:int
     capacity:int
-    state:TablesEnum
+    state:TablesEnum = "libre"
     class Config:
         from_attributes = True
 
 #Esquema de los productos 
 class Products(BaseModel):
-    #id_products:int
+    id_products:int | None = None
     name:str
     description:str
     price:Decimal
-    stock:int 
-    category:CategoryEnum  
+    category:str 
+    status:StatusEnum | None = None
     #owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True

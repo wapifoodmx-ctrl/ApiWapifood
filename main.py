@@ -58,29 +58,6 @@ app.add_middleware(
 )
 
 
-# Ruta para crear productos (sin validación de duplicados)
-@app.post("/products/", response_model=ProductsSchema)
-async def create_product(
-    product: ProductsSchema,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    db_product = ProductsModel(
-        name=product.name,
-        description=product.description,
-        price=product.price,
-        stock=product.stock,
-        category=product.category,
-        owner_id=current_user.id_users
-    )
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    # Notificar creación de producto
-    product_data = ProductsSchema.from_orm(db_product).dict()
-    await notify_clients("product_created", product_data, current_user.id_users)
-    return ProductsSchema.from_orm(db_product)
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app",host="0.0.0.0", port = 8000, reload=True)

@@ -17,8 +17,8 @@ from app.db.models import (
     RoleEnum,
     RoleOrders,
     TablesEnum,
-    CategoryEnum,
-    PaymentMethodEnum
+    PaymentMethodEnum,
+    StatusEnum
 )
 
 # this is the Alembic Config object, which provides

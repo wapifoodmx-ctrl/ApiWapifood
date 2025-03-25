@@ -8,16 +8,6 @@ from jose import JWTError, jwt
 from app.token import SECRET_KEY, ALGORITHM
 import json
 
-# app/routers/websockets.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from typing import List, Dict
-from app.db.database import get_db
-from sqlalchemy.orm import Session
-from app.db.models import User
-from jose import JWTError, jwt
-from app.token import SECRET_KEY, ALGORITHM
-import json
-
 router = APIRouter()
 
 class ConnectionManager:

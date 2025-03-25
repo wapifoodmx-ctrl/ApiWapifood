@@ -29,9 +29,10 @@ class TablesEnum(str, PyEnum):
     Libre = "Libre"
     Ocupado = "Ocupado"
 
-class CategoryEnum(str, PyEnum):
-    input = "activo"
-    output = "inactivo"
+class StatusEnum(str, PyEnum):
+    activo = "activo"
+    inactivo = "inactivo"
+
 
 class PaymentMethodEnum(str, PyEnum):   
     efectivo = "efectivo"
@@ -96,7 +97,6 @@ class Tables(Base):
     state = Column(SQLAlchemyEnum(TablesEnum), nullable=False)
     # Clave foránea a 'User'
     user_id = Column(Integer, ForeignKey("users.id_users")) 
-
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
@@ -108,9 +108,9 @@ class Products(Base):
     name = Column(String(50))
     description = Column(String(50))
     price = Column(Decimal(10, 2))
-    stock = Column(Integer)
-    category = Column(SQLAlchemyEnum(CategoryEnum), nullable=False)
+    category = Column(String(200), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
+    status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
     #Relaciones
     details = relationship("OrdersDetails", back_populates="product")
     owner = relationship("User", back_populates="products")  # Relación inversa
