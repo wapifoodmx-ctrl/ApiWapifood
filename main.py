@@ -14,6 +14,7 @@ import json
 from  app.token import SECRET_KEY, ALGORITHM 
 from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
+from app.routers.websockets import notify_clients
 
 
 
@@ -56,53 +57,6 @@ app.add_middleware(
     allow_headers=["*"],     # Headers permitidos
 )
 
-# Función para verificar el token y obtener el user_id
-async def get_user_from_token(token: str, db: Session):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise HTTPException(status_code=401, detail="Token inválido")
-        user = db.query(User).filter(User.email == username).first()
-        if user is None:
-            raise HTTPException(status_code=401, detail="Usuario no encontrado")
-        return user
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Token inválido o expirado")
-
-# Función para notificar a clientes WebSocket
-async def notify_clients(event_type: str, data: dict, user_id: int):
-    """Notifica a los clientes WebSocket conectados según el user_id."""
-    message = json.dumps({"event_type": event_type, "data": data})
-    for client in websocket_clients:
-        if client["user_id"] == user_id:
-            await client["websocket"].send_text(message)
-
-# Endpoint WebSocket autenticado con token
-# Endpoint WebSocket autenticado con token como query parameter
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
-    """Maneja conexiones WebSocket autenticadas con token JWT pasado como query parameter."""
-    try:
-        # Verificar el token y obtener el usuario
-        user = await get_user_from_token(token, db)
-        user_id = user.id_users
-
-        # Aceptar la conexión
-        await websocket.accept()
-        websocket_clients.append({"websocket": websocket, "user_id": user_id})
-
-        try:
-            while True:
-                data = await websocket.receive_text()
-                await websocket.send_text(f"Echo: {data}")
-        except WebSocketDisconnect:
-            websocket_clients.remove({"websocket": websocket, "user_id": user_id})
-            await notify_clients("user_disconnected", {"user_id": user_id}, user_id)
-    except HTTPException as e:
-        await websocket.close(code=1008, reason=e.detail)  # Cerrar con mensaje de error
-    except Exception as e:
-        await websocket.close(code=1011, reason=str(e))
 
 # Ruta para crear productos (sin validación de duplicados)
 @app.post("/products/", response_model=ProductsSchema)
@@ -129,4 +83,4 @@ async def create_product(
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", port = 8000, reload=True)
+    uvicorn.run("main:app",host="0.0.0.0", port = 8000, reload=True)
