@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Union
+from typing import List, Union, Optional
 from app.db.models import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum
 #Para el rol de los usuarios
 #La enumeración es una lista de valores que se pueden asignar a una variable.
@@ -82,6 +82,20 @@ class ShowUser(BaseModel):
     class Config:
         from_attributes = True
 
+#Esquema de los detalles de las ordenes
+#Se inserta el id de la orden, el id del producto, la cantidad, el precio unitario
+#y el subtotal
+class OrdersDetails(BaseModel):
+    #id_orders_details:int
+    order_id:int
+    product_id:int
+    quantity:int
+    #unit_price:Decimal
+    #subtotal:Decimal
+    class Config:
+        from_attributes = True
+
+
 #class Orders(BaseModel):
 class Orders(BaseModel):
     #id_orders: int
@@ -90,8 +104,25 @@ class Orders(BaseModel):
     date_time:datetime
     total:Decimal
     orderscol:str
+    order_details: List[OrdersDetails]  # Agregar los detalles de la orden
     class Config:
         from_attributes = True
+
+
+class OrdersResponse(BaseModel):
+    id_orders: int
+    mesa_id: int
+    state: RoleOrders
+    date_time: datetime
+    total: Decimal
+    orderscol: str
+    user_id: int
+    order_details: List[OrdersDetails]
+
+    class Config:
+        from_attributes = True
+
+
 
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada
@@ -104,6 +135,20 @@ class Tables(BaseModel):
     class Config:
         from_attributes = True
 
+
+# Esquema para crear un producto (con campos adicionales)
+class ProductsCreate(BaseModel):
+    name: str
+    description: str
+    price: Decimal
+    category: str
+    status: Optional[StatusEnum] = None
+    mesa_id: Optional[int] = 1  # Para el pedido
+    quantity: Optional[int] = 1  # Para OrdersDetails
+
+    class Config:
+        from_attributes = True
+
 #Esquema de los productos 
 class Products(BaseModel):
     id_products:int | None = None
@@ -113,18 +158,6 @@ class Products(BaseModel):
     category:str 
     status:StatusEnum | None = None
     #owner_id: int | None = None  # Añadir owner_id 
-    class Config:
-        from_attributes = True
-#Esquema de los detalles de las ordenes
-#Se inserta el id de la orden, el id del producto, la cantidad, el precio unitario
-#y el subtotal
-class OrdersDetails(BaseModel):
-    #id_orders_details:int
-    order_id:int
-    product_id:int
-    quantity:int
-    unit_price:Decimal
-    subtotal:Decimal
     class Config:
         from_attributes = True
 

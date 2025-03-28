@@ -1,20 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI
 import uvicorn
 from app.routers import user, tables, products, orders, payments, auth
-from app.db.database import Base, engine, get_db
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 from typing import List, Dict
-from app.schemas import Products as ProductsSchema
-from app.oauth import get_current_user
-from app.db.models import Products as ProductsModel
-from sqlalchemy.orm import Session
-from app.db.models import User
-import json
-from  app.token import SECRET_KEY, ALGORITHM 
-from jose import JWTError, jwt
 from fastapi.security import OAuth2PasswordBearer
-from app.routers.websockets import notify_clients
+
 
 
 

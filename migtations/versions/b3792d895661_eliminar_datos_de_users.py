@@ -30,7 +30,7 @@ def upgrade():
     )
 
 def downgrade():
-    # Revertir al tamaño original (ajústalo según tu caso)
+    # Revertir al tamaño original
     op.alter_column(
         'users',
         'password',

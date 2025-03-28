@@ -88,6 +88,7 @@ class Orders(Base):
     payments = relationship("Payments", back_populates="order")
     # Relación con la tabla `Tables`
     table = relationship("Tables", back_populates="orders")
+    order_details = relationship("OrdersDetails", back_populates="order")
 
 class Tables(Base):
     __tablename__ = "tables"
@@ -96,7 +97,7 @@ class Tables(Base):
     capacity = Column(Integer)
     state = Column(SQLAlchemyEnum(TablesEnum), nullable=False)
     # Clave foránea a 'User'
-    user_id = Column(Integer, ForeignKey("users.id_users")) 
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False) 
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
@@ -114,6 +115,7 @@ class Products(Base):
     #Relaciones
     details = relationship("OrdersDetails", back_populates="product")
     owner = relationship("User", back_populates="products")  # Relación inversa
+    order_details = relationship("OrdersDetails", back_populates="product")
 
 
 
@@ -126,8 +128,8 @@ class OrdersDetails(Base):
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
       # Relaciones
-    order = relationship("Orders", back_populates="details")
-    product = relationship("Products", back_populates="details")
+    order = relationship("Orders", back_populates="order_details")
+    product = relationship("Products")
 
 
 class Payments(Base):

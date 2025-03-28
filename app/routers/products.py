@@ -3,10 +3,10 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from typing import List
 from app.db.database import get_db
-from app.db.models import Products as ProductsModel
-from app.schemas import Products as ProductsSchema
+from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User
+from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
-from app.db.models import User
+from datetime import datetime
 
  
 router = APIRouter(
@@ -27,15 +27,73 @@ def obtenemos_productos(
     productos = db.query(ProductsModel).filter(ProductsModel.owner_id == current_user.id_users).all()
     return [ProductsSchema.from_orm(producto) for producto in productos]
 
-
 @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
+def crear_producto_owner(
+    product: ProductsCreate,  # Usar el esquema ProductsCreate
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user),
+    token: str = Depends(oauth2_scheme)
+):
+    """Crea un nuevo producto asignando el owner_id del usuario autenticado, y genera un pedido y detalle de pedido."""
+    # 1. Validar la cantidad
+    if product.quantity <= 0:
+        raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
+
+    # 2. Crear el producto
+    db_product = ProductsModel(
+        name=product.name,
+        description=product.description,
+        price=product.price,
+        status=product.status or "activo",  # Usar el valor por defecto de StatusEnum
+        category=product.category,
+        owner_id=current_user.id_users
+    )
+    db.add(db_product)
+    db.commit()
+    db.refresh(db_product)
+
+    # 3. Crear un pedido (Orders) asociado al usuario autenticado
+    quantity = product.quantity  # Cantidad proporcionada en la solicitud
+    db_order = OrdersModel(
+        mesa_id=product.mesa_id,  # Usar el mesa_id proporcionado
+        state="Ocupado",  # Estado inicial del pedido (RoleOrders.Ocupado)
+        date_time=datetime.utcnow(),
+        total=db_product.price * quantity,  # Total inicial basado en el precio del producto y la cantidad
+        orderscol="Orden creada automáticamente",
+        user_id=current_user.id_users  # Asociar el pedido al usuario autenticado
+    )
+    db.add(db_order)
+    db.commit()
+    db.refresh(db_order)
+
+    # 4. Crear un detalle de pedido (OrdersDetails) tomando datos de Products y Orders
+    unit_price = db_product.price  # Tomar el precio del producto
+    subtotal = quantity * unit_price  # Calcular el subtotal
+
+    db_order_detail = OrdersDetailsModel(
+        order_id=db_order.id_orders,  # Tomar el ID del pedido recién creado
+        product_id=db_product.id_products,  # Tomar el ID del producto recién creado
+        quantity=quantity,  # Usar la cantidad proporcionada
+        unit_price=unit_price,  # Usar el precio del producto
+        subtotal=subtotal  # Calcular el subtotal
+    )
+    db.add(db_order_detail)
+    db.commit()
+    db.refresh(db_order_detail)
+
+    return ProductsSchema.from_orm(db_product)
+
+
+
+
+
+""" @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
 def crear_producto_owner(
     product: ProductsSchema,
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """Crea un nuevo producto asignando el owner_id del usuario autenticado."""
     db_product = ProductsModel(
         name=product.name,
         description=product.description,
@@ -47,7 +105,7 @@ def crear_producto_owner(
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
-    return ProductsSchema.from_orm(db_product)
+    return ProductsSchema.from_orm(db_product) """
 
 @router.put("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def actualizar_producto(
