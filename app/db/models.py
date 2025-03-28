@@ -81,6 +81,7 @@ class Orders(Base):
     date_time = Column(DateTime)
     total = Column(Decimal)
     orderscol = Column(String(50))
+    product_name = Column(String(100))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     # Relaciones
     user = relationship("User", back_populates="orders") #

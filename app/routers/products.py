@@ -27,6 +27,8 @@ def obtenemos_productos(
     productos = db.query(ProductsModel).filter(ProductsModel.owner_id == current_user.id_users).all()
     return [ProductsSchema.from_orm(producto) for producto in productos]
 
+
+
 @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
 def crear_producto_owner(
     product: ProductsCreate,  # Usar el esquema ProductsCreate
@@ -60,7 +62,8 @@ def crear_producto_owner(
         date_time=datetime.utcnow(),
         total=db_product.price * quantity,  # Total inicial basado en el precio del producto y la cantidad
         orderscol="Orden creada automáticamente",
-        user_id=current_user.id_users  # Asociar el pedido al usuario autenticado
+        user_id=current_user.id_users, # Asociar el pedido al usuario autenticado
+        product_name=db_product.name    # Tomar el nombre del producto
     )
     db.add(db_order)
     db.commit()

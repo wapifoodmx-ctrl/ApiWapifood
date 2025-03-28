@@ -47,7 +47,7 @@ def eliminar_usuario(user_id, db:Session()):
         detail="Usuario no encontrado"
     )
 
-def obtener_ususarios(db:Session()):
+def obtener_usuarios(db: Session()):  # Corrige el nombre aquí
     data = db.query(models.User).all()
     return data 
 
