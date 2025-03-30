@@ -56,6 +56,21 @@ class PaymentMethodEnum(str, PyEnum):
 # User tiene una relación con la tabla payments
 # User tiene una relación con la tabla tables
 # User tiene una relación con la tabla products
+
+class Image(Base):
+    __tablename__ = "images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(255), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id_users"))  # Relacionamos con la tabla de usuarios
+    product_id = Column(Integer, ForeignKey("products.id_products"))  # Clave foránea a la tabla 'products'
+
+    user = relationship("User", back_populates="images")
+    product = relationship("Products", back_populates="images")  # Relación con Products
+
+
+
 class User(Base):
     __tablename__ = "users"
     id_users = Column(Integer, primary_key=True, autoincrement=True)
@@ -68,6 +83,7 @@ class User(Base):
     payments = relationship("Payments", back_populates="user")
     tables = relationship("Tables", back_populates="user")
     products = relationship("Products", back_populates="owner")  # Relación inversa
+    images = relationship("Image", back_populates="user")
 
 
 # Orders es una clase que hereda de Base de SQLAlchemy
@@ -117,6 +133,7 @@ class Products(Base):
     details = relationship("OrdersDetails", back_populates="product")
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
+    images = relationship("Image", back_populates="product")  # Relación inversa
 
 
 

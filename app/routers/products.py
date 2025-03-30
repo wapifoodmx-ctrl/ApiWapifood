@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Annotated
 from app.db.database import get_db
 from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
@@ -27,7 +27,46 @@ def obtenemos_productos(
     productos = db.query(ProductsModel).filter(ProductsModel.owner_id == current_user.id_users).all()
     return [ProductsSchema.from_orm(producto) for producto in productos]
 
+@router.get("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
+def obtener_producto_id(
+    product_id: Annotated[int, "ID del producto a buscar"],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> ProductsSchema:
+    """
+    Obtiene un producto específico por su ID, si pertenece al usuario autenticado.
 
+    Args:
+        product_id: ID del producto a buscar.
+        db: Sesión de la base de datos.
+        current_user: Usuario autenticado.
+
+    Raises:
+        HTTPException: 404 si el producto no existe.
+        HTTPException: 403 si el producto no pertenece al usuario.
+
+    Returns:
+        ProductsSchema: Esquema del producto encontrado.
+    """
+    # Buscamos el producto por ID
+    db_product = db.query(ProductsModel).filter(ProductsModel.id_products == product_id).first()
+    
+    # Verificamos si el producto existe
+    if not db_product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Producto con ID {product_id} no encontrado"
+        )
+    
+    # Verificamos si el producto pertenece al usuario autenticado
+    if db_product.owner_id != current_user.id_users:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para acceder a este producto"
+        )
+    
+    # Convertimos el modelo SQLAlchemy al esquema Pydantic
+    return ProductsSchema.from_orm(db_product)
 
 @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
 def crear_producto_owner(

@@ -183,3 +183,24 @@ class Login(BaseModel):
 
 class TokenData(BaseModel):
     name: Union[str, None] = None
+
+    # Nuevos esquemas para imágenes
+class ImageCreate(BaseModel):
+    file_name: str
+    file_path: str | None = None
+    user_id: int | None = None
+    product_id: Optional[int] = None  # Hacer product_id opcional
+
+    class Config:
+        from_attributes = True
+
+class ImageResponse(BaseModel):
+    id: int | None = None
+    file_name: str
+    file_path: str | None = None
+    user_id: int | None = None
+    product_id: Optional[int] = None  # Hacer product_id opcional
+    
+
+    class Config:
+        from_attributes = True
