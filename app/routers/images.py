@@ -21,20 +21,24 @@ UPLOAD_DIR = Path("app/static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Esquema de autenticación
-#oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 @router.post("/upload/", response_model=ImageResponse, status_code=status.HTTP_201_CREATED)
-def upload_image(
+async def upload_image(
     file: UploadFile = File(...),
-    product_id: Optional[int] = None,  # Hacer product_id opcional como query parameter
+    product_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    #current_user: User = Depends(get_current_user),  # Obtener el usuario autenticado
-    #token: str = Depends(oauth2_scheme)  # Requerir el token
+    current_user: User = Depends(get_current_user)
 ):
     """Sube una imagen y la asocia al usuario autenticado y, opcionalmente, a un producto."""
     # Validar el tipo de archivo (solo imágenes)
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+
+    # Validar la extensión del archivo
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".gif"}
+    file_extension = f".{file.filename.split('.')[-1].lower()}"
+    if file_extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Solo se permiten imágenes con extensiones .jpg, .jpeg, .png o .gif")
 
     # Verificar que el producto exista si se proporciona un product_id
     if product_id:
@@ -49,19 +53,18 @@ def upload_image(
 
     # Guardar el archivo en el sistema de archivos
     with open(file_path, "wb") as buffer:
-        content = file.read()  # No usamos await porque no es necesario en este caso
+        content = await file.read()
         buffer.write(content)
 
     # Crear el registro en la base de datos
     db_image = Image(
         file_name=unique_filename,
         file_path=str(file_path),
-        user_id=current_user.id_users,  # Asignar el user_id del usuario autenticado
-        product_id=product_id  # Asignar el product_id (puede ser None)
+        user_id=current_user.id_users,
+        product_id=product_id
     )
     db.add(db_image)
     db.commit()
     db.refresh(db_image)
 
-    # Devolver la respuesta usando el esquema ImageResponse
     return ImageResponse.from_orm(db_image)
