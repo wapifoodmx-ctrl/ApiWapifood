@@ -158,6 +158,7 @@ class Payments(Base):
     amount = Column(Decimal(10, 2))
     date = Column(DateTime)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Clave foránea a la tabla 'users'
+    stripe_payment_id = Column(String(255), nullable  = False) #    id de pago de Stripe
 
     # Relaciones
     order = relationship("Orders", back_populates="payments")

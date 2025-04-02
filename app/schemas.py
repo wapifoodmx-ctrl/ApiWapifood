@@ -166,7 +166,7 @@ class Products(BaseModel):
 #Se inserta el id del pago, el id de la orden, el metodo de pago, 
 # la cantidad y la fecha
 class Payments(BaseModel):
-    id_payments:int
+    id_payments:int | None = None
     order_id:int
     payment_method:PaymentMethodEnum
     amount:Decimal

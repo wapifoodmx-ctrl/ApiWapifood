@@ -16,12 +16,12 @@ router = APIRouter(
 # Esquema OAuth2 para el token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
-@router.get("/", response_model=List[OrdersSchema], status_code=status.HTTP_200_OK)
-def obtener_ordenes(db: Session = Depends(get_db), current_user = Depends(oauth2_scheme)):
-    get_current_user(current_user, db)
-    """Obtiene todas las órdenes de la base de datos."""
-    ordenes = db.query(OrdersModel).all()
-    return ordenes
+# @router.get("/", response_model=List[OrdersSchema], status_code=status.HTTP_200_OK)
+# def obtener_ordenes(db: Session = Depends(get_db), current_user = Depends(oauth2_scheme)):
+#     get_current_user(current_user, db)
+#     """Obtiene todas las órdenes de la base de datos del usuario."""
+#     Orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).all()
+#     return Orders
 
 
 @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
