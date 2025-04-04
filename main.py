@@ -1,10 +1,14 @@
 from fastapi import FastAPI
 import uvicorn
-from app.routers import user, tables, products, orders, payments, auth, images
+from app.routers import user, tables, products, orders, payments, auth, categoria
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from typing import List, Dict
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi import Request
+from fastapi.staticfiles import StaticFiles
 
 
 
@@ -25,13 +29,14 @@ app = FastAPI()
 app.include_router(user.router)
 app.include_router(auth.router)
 # Incluir los routers con prefijos específicos
-app.include_router(tables.router)
+app.include_router(categoria.router)
 app.include_router(products.router)
+app.include_router(tables.router)
 app.include_router(orders.router)
 app.include_router(payments.router)
-app.include_router(images.router)
 
-
+# Montar el directorio de archivos estáticos
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Configuración de CORS
 origins = [
@@ -49,7 +54,12 @@ app.add_middleware(
     allow_headers=["*"],     # Headers permitidos
 )
 
-
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
 
 if __name__ == "__main__":
     uvicorn.run("main:app",host="0.0.0.0", port = 8000, reload=True)

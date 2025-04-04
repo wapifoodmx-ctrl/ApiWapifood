@@ -20,7 +20,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 def crear_mesa(
     table: TablesSchema,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)  # Ya está correcto
+    current_user: User = Depends(get_current_user)  
 ):
     """Crea una nueva mesa en la base de datos, asignando el user_id del usuario autenticado."""
     # Verificar si la mesa ya existe (por número, por ejemplo)
@@ -47,7 +47,7 @@ def crear_mesa(
 @router.get("/tables", response_model=List[TablesSchema], status_code=status.HTTP_200_OK)
 def obtener_las_mesas(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)  # Corregir aquí
+    current_user: User = Depends(get_current_user)  
 ):
     """Obtiene todas las mesas de la base de datos."""
     # Filtrar las mesas por el usuario autenticado (opcional)

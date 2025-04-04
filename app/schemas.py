@@ -1,5 +1,4 @@
-
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -111,7 +110,7 @@ class Orders(BaseModel):
 
 class OrdersResponse(BaseModel):
     id_orders: int
-    mesa_id: int
+    #mesa_id: int
     state: RoleOrders
     date_time: datetime
     total: Decimal
@@ -141,9 +140,9 @@ class ProductsCreate(BaseModel):
     name: str
     description: str
     price: Decimal
-    category: str
+    category_id: int | None = None  # Cambié a int | None
     status: Optional[StatusEnum] = None
-    mesa_id: Optional[int] = 1  # Para el pedido
+    #mesa_id: Optional[int] = 1  # Para el pedido
     quantity: Optional[int] = 1  # Para OrdersDetails
 
     class Config:
@@ -157,6 +156,12 @@ class Products(BaseModel):
     price:Decimal
     category:str 
     status:StatusEnum | None = None
+    image_url: str | None = None  # Nuevo campo para la URL de la imagen
+    @field_validator('category', mode='before')
+    def extract_category_name(cls, value):
+        if hasattr(value, 'nombre_categoria'):
+            return value.nombre_categoria
+        return value
     #owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True
@@ -184,7 +189,7 @@ class Login(BaseModel):
 class TokenData(BaseModel):
     name: Union[str, None] = None
 
-    # Nuevos esquemas para imágenes
+# Nuevos esquemas para imágenes
 class ImageCreate(BaseModel):
     file_name: str
     file_path: str | None = None
@@ -200,7 +205,25 @@ class ImageResponse(BaseModel):
     file_path: str | None = None
     user_id: int | None = None
     product_id: Optional[int] = None  # Hacer product_id opcional
-    
+
+
+    class Config:
+        from_attributes = True
+
+class CategoriaCreate(BaseModel):
+    nombre_categoria: str
+    descripcion_categoria: str # Cambié "description_categoria" a seguir tu convención
+    status: StatusEnum | None = "activo"  # Por defecto "activo" si no se especifica
+
+    class Config:
+        from_attributes = True        
+
+class Categoria(BaseModel):
+    id_categoria:int | None = None
+    nombre_categoria:str
+    descripcion_categoria:str
+    status:StatusEnum | None = None
+    products: List[Products] | None = None  # Relación con Products
 
     class Config:
         from_attributes = True

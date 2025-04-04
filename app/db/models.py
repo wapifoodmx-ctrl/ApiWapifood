@@ -64,7 +64,7 @@ class Image(Base):
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(255), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Relacionamos con la tabla de usuarios
-    product_id = Column(Integer, ForeignKey("products.id_products"))  # Clave foránea a la tabla 'products'
+    product_id = Column(Integer, ForeignKey("products.id_products"), nullable=False)  # Clave foránea a la tabla 'products'
 
     user = relationship("User", back_populates="images")
     product = relationship("Products", back_populates="images")  # Relación con Products
@@ -74,7 +74,7 @@ class Image(Base):
 class User(Base):
     __tablename__ = "users"
     id_users = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable = False)
+    name = Column(String(50), unique=False, nullable = False)
     email = Column(String(50), unique=True, nullable = False)
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
@@ -101,7 +101,7 @@ class Orders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     # Relaciones
     user = relationship("User", back_populates="orders") #
-    details = relationship("OrdersDetails", back_populates="order")
+    #details = relationship("OrdersDetails", back_populates="order")
     payments = relationship("Payments", back_populates="order")
     # Relación con la tabla `Tables`
     table = relationship("Tables", back_populates="orders")
@@ -126,11 +126,13 @@ class Products(Base):
     name = Column(String(50))
     description = Column(String(50))
     price = Column(Decimal(10, 2))
-    category = Column(String(200), nullable=False)
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
+    category_id = Column(Integer, ForeignKey("categoria.id_categoria"), nullable = False)  # Clave foránea a la tabla 'categoria'
     #Relaciones
-    details = relationship("OrdersDetails", back_populates="product")
+    #category = Column(String(200), nullable=False)
+    category = relationship("Categoria", back_populates="productos")
+    #details = relationship("OrdersDetails", back_populates="product")
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
     images = relationship("Image", back_populates="product")  # Relación inversa
@@ -147,7 +149,7 @@ class OrdersDetails(Base):
     subtotal = Column(Decimal(10, 2))
       # Relaciones
     order = relationship("Orders", back_populates="order_details")
-    product = relationship("Products")
+    product = relationship("Products", back_populates="order_details")
 
 
 class Payments(Base):
@@ -163,5 +165,16 @@ class Payments(Base):
     # Relaciones
     order = relationship("Orders", back_populates="payments")
     user = relationship("User", back_populates="payments")
+
+class Categoria(Base):
+    __tablename__ = "categoria"
+    id_categoria = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_categoria = Column(String(50), unique=True, nullable=False)
+    descripcion_categoria = Column(String(255), nullable=False)
+    # Relación con productos
+    status = Column(String(10), default="activo")  
+    productos = relationship("Products", back_populates="category")
+    
+    
 
 

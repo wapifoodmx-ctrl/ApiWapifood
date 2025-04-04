@@ -1,18 +1,29 @@
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from typing import List, Annotated
+from typing import List, Annotated, Optional
 from app.db.database import get_db
-from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User
+from app.db.models import Image, User
+from app.schemas import ImageCreate, ImageResponse
+from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User, Image as ImageModel
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
 from datetime import datetime
+from pathlib import Path
+from app.db.models import Categoria
+from app.db.models import StatusEnum, RoleOrders
+import json
+# from pydantic import ValidationError
+import uuid
 
- 
+
 router = APIRouter(
         prefix="/products",
         tags=["Products"],
     )
+# Directorio donde se guardarán las imágenes
+UPLOAD_DIR = Path("app/static/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Esquema OAuth2 para el token
 
@@ -23,9 +34,24 @@ def obtenemos_productos(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Obtiene todos los productos creados por el usuario autenticado."""
+    """Obtiene todos los productos creados por el usuario autenticado, incluyendo la URL de la imagen."""
+    # Obtener los productos del usuario autenticado
     productos = db.query(ProductsModel).filter(ProductsModel.owner_id == current_user.id_users).all()
-    return [ProductsSchema.from_orm(producto) for producto in productos]
+
+    # Lista para almacenar los productos con la URL de la imagen
+    productos_con_imagen = []
+
+    for producto in productos:
+        # Obtener la primera imagen asociada al producto (si existe)
+        imagen = producto.images[0] if producto.images else None
+        # Generar la URL de la imagen (si existe)
+        image_url = f"http://192.168.1.69:8000/static/uploads/{imagen.file_name}" if imagen else None
+        # Convertir el producto a ProductsSchema y agregar la URL de la imagen
+        producto_schema = ProductsSchema.from_orm(producto)
+        producto_schema.image_url = image_url
+        productos_con_imagen.append(producto_schema)
+
+    return productos_con_imagen
 
 @router.get("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def obtener_producto_id(
@@ -68,86 +94,169 @@ def obtener_producto_id(
     # Convertimos el modelo SQLAlchemy al esquema Pydantic
     return ProductsSchema.from_orm(db_product)
 
+# @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
+# def crear_producto_owner(
+#     product: ProductsCreate,  # Usar el esquema ProductsCreate
+#     db: Session = Depends(get_db), 
+#     current_user: User = Depends(get_current_user),
+#     token: str = Depends(oauth2_scheme)
+# ):
+#     """Crea un nuevo producto asignando el owner_id del usuario autenticado, y genera un pedido y detalle de pedido."""
+#     # 1. Validar la cantidad
+#     if product.quantity <= 0:
+#         raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
+
+#     # 2. Crear el producto
+#     db_product = ProductsModel(
+#         name=product.name,
+#         description=product.description,
+#         price=product.price,
+#         status=product.status or "activo",  # Usar el valor por defecto de StatusEnum
+#         category=product.category,
+#         owner_id=current_user.id_users
+#     )
+#     db.add(db_product)
+#     db.commit()
+#     db.refresh(db_product)
+
+#     # 3. Crear un pedido (Orders) asociado al usuario autenticado
+#     quantity = product.quantity  # Cantidad proporcionada en la solicitud
+#     db_order = OrdersModel(
+#         #mesa_id=product.mesa_id,  # Usar el mesa_id proporcionado
+#         state="Ocupado",  # Estado inicial del pedido (RoleOrders.Ocupado)
+#         date_time=datetime.utcnow(),
+#         total=db_product.price * quantity,  # Total inicial basado en el precio del producto y la cantidad
+#         orderscol="Orden creada automáticamente",
+#         user_id=current_user.id_users, # Asociar el pedido al usuario autenticado
+#         product_name=db_product.name    # Tomar el nombre del producto
+#     )
+#     db.add(db_order)
+#     db.commit()
+#     db.refresh(db_order)
+
+#     # 4. Crear un detalle de pedido (OrdersDetails) tomando datos de Products y Orders
+#     unit_price = db_product.price  # Tomar el precio del producto
+#     subtotal = quantity * unit_price  # Calcular el subtotal
+
+#     db_order_detail = OrdersDetailsModel(
+#         order_id=db_order.id_orders,  # Tomar el ID del pedido recién creado
+#         product_id=db_product.id_products,  # Tomar el ID del producto recién creado
+#         quantity=quantity,  # Usar la cantidad proporcionada
+#         unit_price=unit_price,  # Usar el precio del producto
+#         subtotal=subtotal  # Calcular el subtotal
+#     )
+#     db.add(db_order_detail)
+#     db.commit()
+#     db.refresh(db_order_detail)
+
+#     return ProductsSchema.from_orm(db_product)
+
 @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
-def crear_producto_owner(
-    product: ProductsCreate,  # Usar el esquema ProductsCreate
-    db: Session = Depends(get_db), 
+async def crear_producto_con_imagen(
+    product: str,  # Cambiamos a str para aceptar la cadena JSON desde Swagger UI
+    file: UploadFile = File(None),  # Imagen opcional
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """Crea un nuevo producto asignando el owner_id del usuario autenticado, y genera un pedido y detalle de pedido."""
-    # 1. Validar la cantidad
-    if product.quantity <= 0:
+    """Crea un nuevo producto con una imagen opcional, asignando el owner_id del usuario autenticado,
+    y genera un pedido y detalle de pedido."""
+    
+    # 1. Parsear la cadena JSON a un objeto ProductsCreate
+    try:
+        product_dict = json.loads(product)  # Convertimos la cadena JSON a un diccionario
+        product_data = ProductsCreate(**product_dict)  # Validamos contra el esquema ProductsCreate
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="El formato JSON del campo 'product' es inválido")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Datos del producto inválidos: {str(e)}")
+
+    # 2. Validar la cantidad
+    if product_data.quantity <= 0:
         raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
 
-    # 2. Crear el producto
+    # 3. Validar que la categoría exista
+    if product_data.category_id:
+        category_exists = db.query(Categoria).filter(Categoria.id_categoria == product_data.category_id).first()
+        if not category_exists:
+            raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    else:
+        raise HTTPException(status_code=400, detail="Se requiere una categoría (category_id)")
+
+    # 4. Crear el producto en la base de datos
     db_product = ProductsModel(
-        name=product.name,
-        description=product.description,
-        price=product.price,
-        status=product.status or "activo",  # Usar el valor por defecto de StatusEnum
-        category=product.category,
+        name=product_data.name,
+        description=product_data.description,
+        price=product_data.price,
+        status=product_data.status or StatusEnum.activo,  # Usamos el valor por defecto de StatusEnum
+        category_id=product_data.category_id,
         owner_id=current_user.id_users
     )
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
 
-    # 3. Crear un pedido (Orders) asociado al usuario autenticado
-    quantity = product.quantity  # Cantidad proporcionada en la solicitud
+    # 5. Manejar la subida de imagen si se proporciona
+    if file:
+        # Validar el tipo de archivo
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+        
+        # Validar la extensión
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".gif"}
+        file_extension = f".{file.filename.split('.')[-1].lower()}"
+        if file_extension not in allowed_extensions:
+            raise HTTPException(status_code=400, detail="Solo se permiten imágenes con extensiones .jpg, .jpeg, .png o .gif")
+        
+        # Generar nombre único y guardar la imagen
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = UPLOAD_DIR / unique_filename
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # Crear registro de la imagen en la base de datos
+        db_image = ImageModel(
+            file_name=unique_filename,
+            file_path=str(file_path),
+            user_id=current_user.id_users,
+            product_id=db_product.id_products
+        )
+        db.add(db_image)
+        db.commit()
+        db.refresh(db_image)
+
+    # 6. Crear un pedido asociado al usuario autenticado
+    quantity = product_data.quantity
     db_order = OrdersModel(
-        mesa_id=product.mesa_id,  # Usar el mesa_id proporcionado
-        state="Ocupado",  # Estado inicial del pedido (RoleOrders.Ocupado)
+        state=RoleOrders.Ocupado,  # Usamos el enum RoleOrders
         date_time=datetime.utcnow(),
-        total=db_product.price * quantity,  # Total inicial basado en el precio del producto y la cantidad
+        total=db_product.price * quantity,
         orderscol="Orden creada automáticamente",
-        user_id=current_user.id_users, # Asociar el pedido al usuario autenticado
-        product_name=db_product.name    # Tomar el nombre del producto
+        user_id=current_user.id_users,
+        product_name=db_product.name
     )
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
 
-    # 4. Crear un detalle de pedido (OrdersDetails) tomando datos de Products y Orders
-    unit_price = db_product.price  # Tomar el precio del producto
-    subtotal = quantity * unit_price  # Calcular el subtotal
-
+    # 7. Crear detalle de pedido
+    unit_price = db_product.price
+    subtotal = quantity * unit_price
     db_order_detail = OrdersDetailsModel(
-        order_id=db_order.id_orders,  # Tomar el ID del pedido recién creado
-        product_id=db_product.id_products,  # Tomar el ID del producto recién creado
-        quantity=quantity,  # Usar la cantidad proporcionada
-        unit_price=unit_price,  # Usar el precio del producto
-        subtotal=subtotal  # Calcular el subtotal
+        order_id=db_order.id_orders,
+        product_id=db_product.id_products,
+        quantity=quantity,
+        unit_price=unit_price,
+        subtotal=subtotal
     )
     db.add(db_order_detail)
     db.commit()
     db.refresh(db_order_detail)
 
+    # 8. Devolver el producto creado
     return ProductsSchema.from_orm(db_product)
 
-
-
-
-
-""" @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
-def crear_producto_owner(
-    product: ProductsSchema,
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user),
-    token: str = Depends(oauth2_scheme)
-):
-    db_product = ProductsModel(
-        name=product.name,
-        description=product.description,
-        price=product.price,
-        status=product.status,
-        category=product.category,
-        owner_id=current_user.id_users
-    )
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    return ProductsSchema.from_orm(db_product) """
 
 @router.put("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def actualizar_producto(
