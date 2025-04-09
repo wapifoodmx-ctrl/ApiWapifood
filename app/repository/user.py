@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.db import models
-from app.schemas import User, UserId
+from app.schemas import User, UserId, UserInfo, RestauranteCreate, Restaurante
 from fastapi import HTTPException, status
 from app.hashing import Hash
 
@@ -70,3 +70,66 @@ def actualizar_usuarios(user_id,updateUser, db:Session()):
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Usuario no encontrado"
     )
+
+
+# Nueva función para crear UserInfo
+def crear_user_info(user_id: int, user_info: UserInfo, db: Session):
+    try:
+        # Verificar si ya existe un UserInfo para este usuario
+        existing_info = db.query(models.UserInfo).filter(models.UserInfo.user_id == user_id).first()
+        if existing_info:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe información personal para este usuario"
+            )
+        
+        nueva_info = models.UserInfo(
+            nombre=user_info.nombre,
+            apellido=user_info.apellido,
+            email=user_info.email,
+            telefono=user_info.telefono,
+            direccion=user_info.direccion,
+            codigo_postal=user_info.codigo_postal,
+            ciudad=user_info.ciudad,
+            alcaldia=user_info.alcaldia,
+            user_id=user_id
+        )
+        db.add(nueva_info)
+        db.commit()
+        db.refresh(nueva_info)
+        return nueva_info
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Error creando información del usuario: {e}"
+        )
+
+# Nueva función para obtener User con UserInfo
+def obtener_user_con_info(user_id: int, db: Session):
+    user = db.query(models.User).filter(models.User.id_users == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No existe el usuario con el id {user_id}"
+        )
+    return user  # La relación user_info se cargará automáticamente gracias a SQLAlchemy
+
+
+
+def crear_restaurante(restaurante: RestauranteCreate, db: Session):
+    try:
+        nuevo_restaurante = models.Restaurante(
+            nombre_restaurante=restaurante.nombre_restaurante,
+            ciudad=restaurante.ciudad,
+            estado_provincia=restaurante.estado_provincia,
+            alcadia=restaurante.alcadia
+        )
+        db.add(nuevo_restaurante)
+        db.commit()
+        db.refresh(nuevo_restaurante)
+        return nuevo_restaurante
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Error creando restaurante: {e}"
+        )

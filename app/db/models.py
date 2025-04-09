@@ -84,6 +84,37 @@ class User(Base):
     tables = relationship("Tables", back_populates="user")
     products = relationship("Products", back_populates="owner")  # Relación inversa
     images = relationship("Image", back_populates="user")
+    # Nueva relación con UserInfo
+    user_info = relationship("UserInfo", back_populates="user", uselist=False)  # uselist=False asegura relación 1:1
+
+class UserInfo(Base):
+    __tablename__ = "user_info"
+    id_user_info = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(50), nullable=False)
+    apellido = Column(String(50), nullable=False)
+    email = Column(String(50), nullable=False)
+    telefono = Column(String(50), nullable=False)
+    direccion = Column(String(50), nullable=False)
+    codigo_postal = Column(Integer, nullable=False)
+    ciudad = Column(String(50), nullable=False)
+    alcaldia = Column(String(50), nullable=False)
+
+    # Relaciones
+    # Clave foránea a la tabla 'users'
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False, unique=True)  # unique=True asegura relación 1:1
+    # Relación inversa con User
+    user = relationship("User", back_populates="user_info")
+
+
+class Restaurante(Base):
+    __tablename__= "restaurante"
+    id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_restaurante = Column(String(50), nullable=False)
+    ciudad = Column(String(50), nullable=False)
+    estado_provincia = Column(String(50), nullable=False)
+    alcadia = Column(String(50), nullable=False)
+    #releaciones 
+
 
 
 # Orders es una clase que hereda de Base de SQLAlchemy

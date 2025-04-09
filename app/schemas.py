@@ -71,6 +71,27 @@ class User(BaseModel):
 class UserId(BaseModel):
     id_user:int 
 
+class UserInfo(BaseModel):
+    id_user_info: int | None = None
+    nombre: str
+    apellido: str
+    email: str
+    telefono: str
+    direccion: str
+    codigo_postal: int
+    ciudad: str
+    alcaldia: str
+    user_id: int | None = None # Clave foránea que conecta con User
+
+    class Config:
+        from_attributes = True  # Para compatibilidad con SQLAlchemy
+        
+class UserWithInfo(BaseModel):
+    user_info: UserInfo | None = None  # Relación opcional con UserInfo
+
+    class Config:
+        from_attributes = True
+
 # Esquema para mostrar un usuario (sin password, para GET)
 class ShowUser(BaseModel):
     id_users: int| None = None
@@ -228,6 +249,26 @@ class Categoria(BaseModel):
     descripcion_categoria:str
     status:StatusEnum | None = None
     products: List[Products] | None = None  # Relación con Products
+
+    class Config:
+        from_attributes = True
+
+
+class RestauranteCreate(BaseModel):
+    nombre_restaurante: str
+    ciudad: str
+    estado_provincia: str
+    alcadia: str
+
+    class Config:
+        from_attributes = True
+
+class Restaurante(BaseModel):
+    id_restaurante: int | None = None
+    nombre_restaurante: str
+    ciudad: str
+    estado_provincia: str
+    alcadia: str
 
     class Config:
         from_attributes = True
