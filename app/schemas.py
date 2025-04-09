@@ -154,18 +154,22 @@ class Products(BaseModel):
     name:str
     description:str
     price:Decimal
-    category:str 
+    category_id:int 
     status:StatusEnum | None = None
     image_url: str | None = None  # Nuevo campo para la URL de la imagen
-    @field_validator('category', mode='before')
-    def extract_category_name(cls, value):
-        if hasattr(value, 'nombre_categoria'):
-            return value.nombre_categoria
-        return value
+
     #owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True
 
+
+class ProductsPatch(BaseModel):  # Nuevo esquema para actualizaciones parciales
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    category_id: Optional[int] = None
+    quantity: Optional[int] = None
+    status: Optional[StatusEnum] = None
 
 #Esquema de los pagos
 #Se inserta el id del pago, el id de la orden, el metodo de pago, 

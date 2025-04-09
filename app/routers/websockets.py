@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import User
 from jose import JWTError, jwt
 from app.token import SECRET_KEY, ALGORITHM
-import json
+import json 
 
 router = APIRouter()
 
