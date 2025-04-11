@@ -78,14 +78,16 @@ class User(Base):
     email = Column(String(50), unique=True, nullable = False)
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
+    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
     # Relaciones
     orders = relationship("Orders", back_populates="user")
     payments = relationship("Payments", back_populates="user")
     tables = relationship("Tables", back_populates="user")
     products = relationship("Products", back_populates="owner")  # Relación inversa
     images = relationship("Image", back_populates="user")
-    # Nueva relación con UserInfo
+    #Nueva relación con UserInfo
     user_info = relationship("UserInfo", back_populates="user", uselist=False)  # uselist=False asegura relación 1:1
+    restaurante = relationship("Restaurante", back_populates="users")  # Relación inversa
 
 class UserInfo(Base):
     __tablename__ = "user_info"
@@ -114,6 +116,9 @@ class Restaurante(Base):
     estado_provincia = Column(String(50), nullable=False)
     alcadia = Column(String(50), nullable=False)
     #releaciones 
+    users = relationship("User", back_populates="restaurante")    # Un restaurante tiene muchos usuarios (empleados)
+    products = relationship("Products", back_populates="restaurante")  # Un restaurante tiene muchos productos
+
 
 
 
@@ -159,6 +164,7 @@ class Products(Base):
     price = Column(Decimal(10, 2))
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
+    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
     category_id = Column(Integer, ForeignKey("categoria.id_categoria"), nullable = False)  # Clave foránea a la tabla 'categoria'
     #Relaciones
     #category = Column(String(200), nullable=False)
@@ -167,6 +173,7 @@ class Products(Base):
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
     images = relationship("Image", back_populates="product")  # Relación inversa
+    restaurante = relationship("Restaurante", back_populates="products")  # Relación inversa
 
 
 
