@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
-from app.routers import user, tables, products, orders, payments, auth, categoria
+from app.routers import user, tables, products, orders, payments, auth, categoria, restaurante
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from typing import List, Dict
@@ -27,6 +27,7 @@ websocket_clients: List[Dict[str, WebSocket | int]] = []
 #delete para eliminar datos
 app = FastAPI() 
 app.include_router(user.router)
+app.include_router(restaurante.router)
 app.include_router(auth.router)
 # Incluir los routers con prefijos específicos
 app.include_router(categoria.router)
@@ -34,6 +35,7 @@ app.include_router(products.router)
 app.include_router(tables.router)
 app.include_router(orders.router)
 app.include_router(payments.router)
+
 
 # Montar el directorio de archivos estáticos
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

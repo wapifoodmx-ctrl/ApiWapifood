@@ -9,6 +9,8 @@ from app.oauth import get_current_user
 from app.schemas import User as UserSchema
 from app.repository import user as user_repo
 from pydantic import ValidationError
+ # Importa directamente la función
+
 import os 
 import json
 
@@ -98,9 +100,3 @@ def obtener_user_con_info(user_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return usuario_con_info
 
-
-@router.post("/restaurante", status_code=status.HTTP_201_CREATED, response_model=Restaurante)
-def crear_restaurante(restaurante: RestauranteCreate, db: Session = Depends(get_db), 
-                      current_user: User = Depends(get_current_user)):  # Agregar autenticación
-    nuevo_restaurante = user.crear_restaurante(restaurante, db)
-    return nuevo_restaurante

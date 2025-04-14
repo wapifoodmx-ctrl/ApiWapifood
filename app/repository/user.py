@@ -1,22 +1,21 @@
+# app/repository/user.py
 from sqlalchemy.orm import Session
 from app.db import models
-from app.schemas import User, UserId, UserInfo, RestauranteCreate, Restaurante
+from app.schemas import User, UserInfo, UserInfoCreate
 from fastapi import HTTPException, status
 from app.hashing import Hash
-from app.db.models import UserInfo, ImageUser
+from app.db.models import UserInfo, ImageUser, User
 from datetime import datetime
-from app.schemas import UserInfoCreate
-from app.oauth import get_current_user
 from fastapi import File, UploadFile
 from pydantic import ValidationError
-from app.db.models import User as UserModel
 import json
 import os
 import shutil
+from app.db.models import Restaurante, User
 
 UPLOAD_DIR = "static/uploadsUser"
 
-def crear_usuario(usuario, db:Session()): 
+def crear_usuario(usuario, db: Session): 
     usuario = usuario.dict()
     try:
         nuevo_usuario = models.User(
@@ -31,12 +30,10 @@ def crear_usuario(usuario, db:Session()):
     except Exception as e:
          raise HTTPException(
               status_code=status.HTTP_409_CONFLICT,
-              detail = f"Error creando usuario: {e}"
+              detail=f"Error creando usuario: {e}"
          )
 
-
-
-def obtener_usuario(user_id, db:Session()):
+def obtener_usuario(user_id, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
     if not user: 
         raise HTTPException(
@@ -45,8 +42,7 @@ def obtener_usuario(user_id, db:Session()):
         )
     return user
 
-
-def eliminar_usuario(user_id, db:Session()):
+def eliminar_usuario(user_id, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
     if user:
         db.delete(user)
@@ -57,11 +53,11 @@ def eliminar_usuario(user_id, db:Session()):
         detail="Usuario no encontrado"
     )
 
-def obtener_usuarios(db: Session()):  # Corrige el nombre aquí
+def obtener_usuarios(db: Session):
     data = db.query(models.User).all()
     return data 
 
-def actualizar_usuarios(user_id,updateUser, db:Session()):
+def actualizar_usuarios(user_id, updateUser, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
     if user:
         # Actualizamos solo los campos que se enviaron en la solicitud
@@ -80,7 +76,6 @@ def actualizar_usuarios(user_id,updateUser, db:Session()):
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Usuario no encontrado"
     )
-
 
 def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, db: Session):
     try:
@@ -155,8 +150,6 @@ def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, 
             detail=f"Error creando información del usuario: {e}"
         )
 
-
-# Nueva función para obtener User con UserInfo
 def obtener_user_con_info(user_id: int, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
     if not user:
@@ -166,22 +159,25 @@ def obtener_user_con_info(user_id: int, db: Session):
         )
     return user  # La relación user_info se cargará automáticamente gracias a SQLAlchemy
 
+def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado_provincia: str, alcadia: str, owner_id: int):
+    # Verificar si el owner_id existe en la tabla users
+    owner = db.query(User).filter(User.id_users == owner_id).first()
+    if not owner:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-
-def crear_restaurante(restaurante: RestauranteCreate, db: Session):
+    # Crear el restaurante
+    db_restaurante = Restaurante(
+        nombre_restaurante=nombre_restaurante,
+        ciudad=ciudad,
+        estado_provincia=estado_provincia,
+        alcadia=alcadia,
+        owner_id=owner_id
+    )
     try:
-        nuevo_restaurante = models.Restaurante(
-            nombre_restaurante=restaurante.nombre_restaurante,
-            ciudad=restaurante.ciudad,
-            estado_provincia=restaurante.estado_provincia,
-            alcadia=restaurante.alcadia
-        )
-        db.add(nuevo_restaurante)
+        db.add(db_restaurante)
         db.commit()
-        db.refresh(nuevo_restaurante)
-        return nuevo_restaurante
+        db.refresh(db_restaurante)
+        return db_restaurante
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Error creando restaurante: {e}"
-        )
+        db.rollback()
+        raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")

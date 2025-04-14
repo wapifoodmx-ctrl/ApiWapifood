@@ -304,6 +304,7 @@ class RestauranteCreate(BaseModel):
     ciudad: str
     estado_provincia: str
     alcadia: str
+    owner_id: int | None = None  # ID del propietario (usuario)
 
     class Config:
         from_attributes = True

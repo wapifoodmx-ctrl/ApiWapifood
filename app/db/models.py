@@ -69,6 +69,20 @@ class Image(Base):
     user = relationship("User", back_populates="images")
     product = relationship("Products", back_populates="images")  # Relación con Products
 
+class Restaurante(Base):
+    __tablename__= "restaurante"
+    id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_restaurante = Column(String(50), nullable=False)
+    ciudad = Column(String(50), nullable=False)
+    estado_provincia = Column(String(50), nullable=False)
+    alcadia = Column(String(50), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Nueva clave foránea para el propietario
+    #releaciones 
+    users = relationship("User", back_populates="restaurante", foreign_keys=lambda: [User.restaurante_id])
+    products = relationship("Products", back_populates="restaurante")  # Un restaurante tiene muchos productos
+    categorias = relationship("Categoria", back_populates="restaurante")  # Un restaurante tiene muchas categorías
+    owner = relationship("User", back_populates="restaurantes_propios", foreign_keys=[owner_id])
+
 
 
 class User(Base):
@@ -87,8 +101,13 @@ class User(Base):
     images = relationship("Image", back_populates="user")
     #Nueva relación con UserInfo
     user_info = relationship("UserInfo", back_populates="user", uselist=False)  # uselist=False asegura relación 1:1
-    restaurante = relationship("Restaurante", back_populates="users")  # Relación inversa
+    # Relación con Restaurante como empleado (un usuario pertenece a un restaurante)
+    restaurante = relationship("Restaurante", back_populates="users", foreign_keys=[restaurante_id])
+    # Relación con Restaurante como propietario (un usuario puede ser dueño de varios restaurantes)
+    restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
 
+
+    
 class ImageUser(Base):
     __tablename__ = "image_user"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -118,17 +137,6 @@ class UserInfo(Base):
     user = relationship("User", back_populates="user_info")
     image_user = relationship("ImageUser", back_populates="user_info", uselist=False)  # Relación 1:1
 
-
-class Restaurante(Base):
-    __tablename__= "restaurante"
-    id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
-    nombre_restaurante = Column(String(50), nullable=False)
-    ciudad = Column(String(50), nullable=False)
-    estado_provincia = Column(String(50), nullable=False)
-    alcadia = Column(String(50), nullable=False)
-    #releaciones 
-    users = relationship("User", back_populates="restaurante")    # Un restaurante tiene muchos usuarios (empleados)
-    products = relationship("Products", back_populates="restaurante")  # Un restaurante tiene muchos productos
 
 
 
@@ -220,9 +228,12 @@ class Categoria(Base):
     id_categoria = Column(Integer, primary_key=True, autoincrement=True)
     nombre_categoria = Column(String(50), unique=True, nullable=False)
     descripcion_categoria = Column(String(255), nullable=False)
+    status = Column(String(10), default="activo")
+    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=False)  # Nueva clav
     # Relación con productos
     status = Column(String(10), default="activo")  
     productos = relationship("Products", back_populates="category")
+    restaurante = relationship("Restaurante", back_populates="categorias")
     
     
 
