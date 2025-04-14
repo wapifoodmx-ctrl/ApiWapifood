@@ -77,78 +77,78 @@ def actualizar_usuarios(user_id, updateUser, db: Session):
         detail="Usuario no encontrado"
     )
 
-def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, db: Session):
-    try:
-        # Parsear el user_info de cadena JSON a un objeto
-        user_info_dict = json.loads(user_info_str)
-        user_info = UserInfoCreate(**user_info_dict)
+# def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, db: Session):
+#     try:
+#         # Parsear el user_info de cadena JSON a un objeto
+#         user_info_dict = json.loads(user_info_str)
+#         user_info = UserInfoCreate(**user_info_dict)
 
-        # Verificar si ya existe un UserInfo para este usuario
-        existing_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
-        if existing_info:
-            raise HTTPException(
-                status_code=409,
-                detail="Ya existe información personal para este usuario"
-            )
+#         # Verificar si ya existe un UserInfo para este usuario
+#         existing_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+#         if existing_info:
+#             raise HTTPException(
+#                 status_code=409,
+#                 detail="Ya existe información personal para este usuario"
+#             )
 
-        # Crear UserInfo
-        nueva_info = UserInfo(
-            nombre=user_info.nombre,
-            apellido=user_info.apellido,
-            email=user_info.email,
-            telefono=user_info.telefono,
-            direccion=user_info.direccion,
-            codigo_postal=user_info.codigo_postal,
-            ciudad=user_info.ciudad,
-            alcaldia=user_info.alcaldia,
-            user_id=user_id
-        )
-        db.add(nueva_info)
-        db.commit()
-        db.refresh(nueva_info)
+#         # Crear UserInfo
+#         nueva_info = UserInfo(
+#             nombre=user_info.nombre,
+#             apellido=user_info.apellido,
+#             email=user_info.email,
+#             telefono=user_info.telefono,
+#             direccion=user_info.direccion,
+#             codigo_postal=user_info.codigo_postal,
+#             ciudad=user_info.ciudad,
+#             alcaldia=user_info.alcaldia,
+#             user_id=user_id
+#         )
+#         db.add(nueva_info)
+#         db.commit()
+#         db.refresh(nueva_info)
 
-        # Manejar la imagen si se proporcionó
-        if image:
-            # Validar extensión
-            allowed_extensions = {".jpg", ".jpeg", ".png"}
-            file_extension = os.path.splitext(image.filename)[1].lower()
-            if file_extension not in allowed_extensions:
-                raise HTTPException(status_code=400, detail="Solo se permiten imágenes JPG o PNG")
+#         # Manejar la imagen si se proporcionó
+#         if image:
+#             # Validar extensión
+#             allowed_extensions = {".jpg", ".jpeg", ".png"}
+#             file_extension = os.path.splitext(image.filename)[1].lower()
+#             if file_extension not in allowed_extensions:
+#                 raise HTTPException(status_code=400, detail="Solo se permiten imágenes JPG o PNG")
 
-            # Asegurarse de que la carpeta exista
-            if not os.path.exists(UPLOAD_DIR):
-                os.makedirs(UPLOAD_DIR)
+#             # Asegurarse de que la carpeta exista
+#             if not os.path.exists(UPLOAD_DIR):
+#                 os.makedirs(UPLOAD_DIR)
 
-            # Generar un nombre único
-            unique_filename = f"{user_id}_{int(datetime.now().timestamp())}{file_extension}"
-            file_path = os.path.join(UPLOAD_DIR, unique_filename)
+#             # Generar un nombre único
+#             unique_filename = f"{user_id}_{int(datetime.now().timestamp())}{file_extension}"
+#             file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
-            # Guardar la imagen
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(image.file, buffer)
+#             # Guardar la imagen
+#             with open(file_path, "wb") as buffer:
+#                 shutil.copyfileobj(image.file, buffer)
 
-            # Crear registro en image_user
-            nueva_imagen = ImageUser(
-                file_name=unique_filename,
-                file_path=file_path,
-                user_info_id=nueva_info.id_user_info
-            )
-            db.add(nueva_imagen)
-            db.commit()
-            db.refresh(nueva_imagen)
+#             # Crear registro en image_user
+#             nueva_imagen = ImageUser(
+#                 file_name=unique_filename,
+#                 file_path=file_path,
+#                 user_info_id=nueva_info.id_user_info
+#             )
+#             db.add(nueva_imagen)
+#             db.commit()
+#             db.refresh(nueva_imagen)
 
-        return nueva_info
+#         return nueva_info
 
-    except json.JSONDecodeError:
-        raise  # Reenviar el error al endpoint
-    except ValidationError as e:
-        raise  # Reenviar el error al endpoint
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error creando información del usuario: {e}"
-        )
+#     except json.JSONDecodeError:
+#         raise  # Reenviar el error al endpoint
+#     except ValidationError as e:
+#         raise  # Reenviar el error al endpoint
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Error creando información del usuario: {e}"
+#         )
 
 def obtener_user_con_info(user_id: int, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
@@ -181,3 +181,71 @@ def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")
+
+def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Session):
+    """
+    Actualiza o crea la información del usuario autenticado.
+    """
+    # Parsear el JSON recibido
+    try:
+        user_info_data = json.loads(user_info)
+    except json.JSONDecodeError:
+        raise ValueError("El campo user_info debe ser un JSON válido")
+
+    # Buscar si ya existe un registro de UserInfo para el usuario
+    user_info_record = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
+
+    if user_info_record:
+        # Actualizar los campos existentes
+        user_info_record.nombre = user_info_data.get("nombre", user_info_record.nombre)
+        user_info_record.apellido = user_info_data.get("apellido", user_info_record.apellido)
+        user_info_record.email = user_info_data.get("email", user_info_record.email)
+        user_info_record.telefono = user_info_data.get("telefono", user_info_record.telefono)
+        user_info_record.direccion = user_info_data.get("direccion", user_info_record.direccion)
+        user_info_record.codigo_postal = user_info_data.get("codigo_postal", user_info_record.codigo_postal)
+        user_info_record.ciudad = user_info_data.get("ciudad", user_info_record.ciudad)
+        user_info_record.alcaldia = user_info_data.get("alcaldia", user_info_record.alcaldia)
+    else:
+        # Crear un nuevo registro de UserInfo
+        user_info_record = UserInfo(
+            user_id=user_id,
+            nombre=user_info_data.get("nombre"),
+            apellido=user_info_data.get("apellido"),
+            email=user_info_data.get("email"),
+            telefono=user_info_data.get("telefono"),
+            direccion=user_info_data.get("direccion"),
+            codigo_postal=user_info_data.get("codigo_postal"),
+            ciudad=user_info_data.get("ciudad"),
+            alcaldia=user_info_data.get("alcaldia"),
+        )
+        db.add(user_info_record)
+
+    # Manejar la imagen si se proporciona
+    if image:
+        # Validar el tipo de archivo
+        if not image.content_type.startswith("image/"):
+            raise ValueError("El archivo debe ser una imagen")
+
+        # Guardar la imagen en el sistema de archivos
+        file_path = f"static/uploadsUser/{image.filename}"
+        with open(file_path, "wb") as buffer:
+            buffer.write(image.file.read())
+
+        # Crear o actualizar el registro de la imagen
+        image_record = db.query(ImageUser).filter(ImageUser.user_info_id == user_info_record.id_user_info).first()
+        if image_record:
+            image_record.file_name = image.filename
+            image_record.file_path = file_path
+        else:
+            image_record = ImageUser(
+                user_info_id=user_info_record.id_user_info,
+                file_name=image.filename,
+                file_path=file_path,
+            )
+            db.add(image_record)
+
+    # Guardar los cambios en la base de datos
+    db.commit()
+    db.refresh(user_info_record)
+
+    return user_info_record
