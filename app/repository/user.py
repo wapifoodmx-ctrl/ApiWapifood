@@ -3,8 +3,18 @@ from app.db import models
 from app.schemas import User, UserId, UserInfo, RestauranteCreate, Restaurante
 from fastapi import HTTPException, status
 from app.hashing import Hash
+from app.db.models import UserInfo, ImageUser
+from datetime import datetime
+from app.schemas import UserInfoCreate
+from app.oauth import get_current_user
+from fastapi import File, UploadFile
+from pydantic import ValidationError
+from app.db.models import User as UserModel
+import json
+import os
+import shutil
 
-
+UPLOAD_DIR = "static/uploadsUser"
 
 def crear_usuario(usuario, db:Session()): 
     usuario = usuario.dict()
@@ -72,18 +82,22 @@ def actualizar_usuarios(user_id,updateUser, db:Session()):
     )
 
 
-# Nueva función para crear UserInfo
-def crear_user_info(user_id: int, user_info: UserInfo, db: Session):
+def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, db: Session):
     try:
+        # Parsear el user_info de cadena JSON a un objeto
+        user_info_dict = json.loads(user_info_str)
+        user_info = UserInfoCreate(**user_info_dict)
+
         # Verificar si ya existe un UserInfo para este usuario
-        existing_info = db.query(models.UserInfo).filter(models.UserInfo.user_id == user_id).first()
+        existing_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
         if existing_info:
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+                status_code=409,
                 detail="Ya existe información personal para este usuario"
             )
-        
-        nueva_info = models.UserInfo(
+
+        # Crear UserInfo
+        nueva_info = UserInfo(
             nombre=user_info.nombre,
             apellido=user_info.apellido,
             email=user_info.email,
@@ -97,12 +111,50 @@ def crear_user_info(user_id: int, user_info: UserInfo, db: Session):
         db.add(nueva_info)
         db.commit()
         db.refresh(nueva_info)
+
+        # Manejar la imagen si se proporcionó
+        if image:
+            # Validar extensión
+            allowed_extensions = {".jpg", ".jpeg", ".png"}
+            file_extension = os.path.splitext(image.filename)[1].lower()
+            if file_extension not in allowed_extensions:
+                raise HTTPException(status_code=400, detail="Solo se permiten imágenes JPG o PNG")
+
+            # Asegurarse de que la carpeta exista
+            if not os.path.exists(UPLOAD_DIR):
+                os.makedirs(UPLOAD_DIR)
+
+            # Generar un nombre único
+            unique_filename = f"{user_id}_{int(datetime.now().timestamp())}{file_extension}"
+            file_path = os.path.join(UPLOAD_DIR, unique_filename)
+
+            # Guardar la imagen
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(image.file, buffer)
+
+            # Crear registro en image_user
+            nueva_imagen = ImageUser(
+                file_name=unique_filename,
+                file_path=file_path,
+                user_info_id=nueva_info.id_user_info
+            )
+            db.add(nueva_imagen)
+            db.commit()
+            db.refresh(nueva_imagen)
+
         return nueva_info
+
+    except json.JSONDecodeError:
+        raise  # Reenviar el error al endpoint
+    except ValidationError as e:
+        raise  # Reenviar el error al endpoint
     except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
+            status_code=500,
             detail=f"Error creando información del usuario: {e}"
         )
+
 
 # Nueva función para obtener User con UserInfo
 def obtener_user_con_info(user_id: int, db: Session):

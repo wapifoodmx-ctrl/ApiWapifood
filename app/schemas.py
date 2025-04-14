@@ -230,7 +230,52 @@ class ImageResponse(BaseModel):
     file_path: str | None = None
     user_id: int | None = None
     product_id: Optional[int] = None  # Hacer product_id opcional
+    class Config:
+        from_attributes = True
 
+class ImageUserCreate(BaseModel):
+    file_name: str
+    file_path: str
+    user_info_id: int | None = None
+
+    class Config:
+        from_attributes = True
+
+class ImageUserResponse(BaseModel):
+    id: int | None = None
+    file_name: str
+    file_path: str
+    user_info_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class UserInfoCreate(BaseModel):
+    nombre: str
+    apellido: str
+    email: str
+    telefono: str
+    direccion: str
+    codigo_postal: int
+    ciudad: str
+    alcaldia: str
+
+    class Config:
+        from_attributes = True
+
+class UserInfoResponse(BaseModel):
+    id_user_info: int | None = None
+    nombre: str
+    apellido: str
+    email: str
+    telefono: str
+    direccion: str
+    codigo_postal: int
+    ciudad: str
+    alcaldia: str
+    user_id: int | None = None
+    image_user: Optional[ImageUserResponse] = None  # Incluye la imagen si existe
 
     class Config:
         from_attributes = True

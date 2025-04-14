@@ -1,17 +1,27 @@
-from fastapi import APIRouter, Depends, status, HTTPException
-from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, Restaurante, RestauranteCreate
+from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
+from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, Restaurante, RestauranteCreate, UserInfoCreate, UserInfoResponse
 from typing import List
 from app.db.database import get_db
 from sqlalchemy.orm import Session
-from app.db import models
+from app.db.models import UserInfo, ImageUser, User as UserModel
 from app.repository import user
 from app.oauth import get_current_user
-
+from app.schemas import User as UserSchema
+from app.repository import user as user_repo
+from pydantic import ValidationError
+import os 
+import json
 
 router = APIRouter(
     prefix="/user",
     tags=["User"],
 )
+
+
+# Crear la carpeta static/uploadsUser si no existe
+UPLOAD_DIR = "static/uploadsUser"
+if not os.path.exists(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)  # Al crear los usuarios nos muestra un mensaje
@@ -33,7 +43,8 @@ def obtener_usuarios(db: Session = Depends(get_db),
 
 
 @router.delete('/{user_id}', status_code=status.HTTP_200_OK)
-def eliminar_usuario(user_id: int, db: Session = Depends(get_db)):
+def eliminar_usuario(user_id: int, db: Session = Depends(get_db), 
+                     current_user: User = Depends(get_current_user)):  # Agregar autenticación
     res = user.eliminar_usuario(user_id, db)
     if not res:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
@@ -41,28 +52,47 @@ def eliminar_usuario(user_id: int, db: Session = Depends(get_db)):
 
 # Actualizar un usuario
 @router.put('/{user_id}', status_code=status.HTTP_200_OK, response_model=ShowUser)
-def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get_db)):
+def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get_db), 
+                       current_user: User = Depends(get_current_user)):  # Agregar autenticación
     res = user.actualizar_usuarios(user_id, updateUser, db)
     if not res:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return res
 
+@router.post("/me/info", status_code=status.HTTP_201_CREATED, response_model=UserInfoResponse)
+async def crear_user_info(
+    user_info: str = Form(...),  # Recibir user_info como una cadena JSON
+    image: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)  # Usar el esquema Pydantic para current_user
+):
+    # Obtener el user_id desde el usuario autenticado
+    user_id = current_user.id_users
 
-# Nuevo endpoint para crear/actualizar UserInfo
-@router.post("/{user_id}/info", status_code=status.HTTP_201_CREATED, response_model=UserInfo)
-def crear_user_info(user_id: int, user_info: UserInfo, db: Session = Depends(get_db)):
-    # Verificar si el usuario existe
-    usuario = db.query(models.User).filter(models.User.id_users == user_id).first()
+    # Verificar si el usuario existe (usando el modelo de SQLAlchemy)
+    usuario = db.query(UserModel).filter(UserModel.id_users == user_id).first()
     if not usuario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
-    
-    # Crear la información personal
-    nueva_info = user.crear_user_info(user_id, user_info, db)
-    return nueva_info
 
+    # Llamar al repositorio para crear UserInfo
+    try:
+        nueva_info = user_repo.crear_user_info(user_id, user_info, image, db)
+        return nueva_info
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="El campo user_info debe ser un JSON válido")
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=f"Error de validación en user_info: {str(e)}")
+    except HTTPException as e:
+        raise e  # Reenviar excepciones específicas del repositorio
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error creando información del usuario: {str(e)}"
+        )
 # Nuevo endpoint para obtener User con UserInfo
 @router.get("/{user_id}/info", response_model=UserWithInfo, status_code=status.HTTP_200_OK)
-def obtener_user_con_info(user_id: int, db: Session = Depends(get_db)):
+def obtener_user_con_info(user_id: int, db: Session = Depends(get_db), 
+                          current_user: User = Depends(get_current_user)):  # Agregar autenticación
     usuario_con_info = user.obtener_user_con_info(user_id, db)
     if not usuario_con_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
@@ -70,6 +100,7 @@ def obtener_user_con_info(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/restaurante", status_code=status.HTTP_201_CREATED, response_model=Restaurante)
-def crear_restaurante(restaurante: RestauranteCreate, db: Session = Depends(get_db)):
+def crear_restaurante(restaurante: RestauranteCreate, db: Session = Depends(get_db), 
+                      current_user: User = Depends(get_current_user)):  # Agregar autenticación
     nuevo_restaurante = user.crear_restaurante(restaurante, db)
     return nuevo_restaurante

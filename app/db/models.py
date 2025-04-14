@@ -89,6 +89,16 @@ class User(Base):
     user_info = relationship("UserInfo", back_populates="user", uselist=False)  # uselist=False asegura relación 1:1
     restaurante = relationship("Restaurante", back_populates="users")  # Relación inversa
 
+class ImageUser(Base):
+    __tablename__ = "image_user"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_name = Column(String(255), nullable=False)
+    file_path = Column(String(255), nullable=False)
+    user_info_id = Column(Integer, ForeignKey("user_info.id_user_info"), nullable=False, unique=True)  # Relación 1:1
+
+    # Relación inversa
+    user_info = relationship("UserInfo", back_populates="image_user")
+
 class UserInfo(Base):
     __tablename__ = "user_info"
     id_user_info = Column(Integer, primary_key=True, autoincrement=True)
@@ -106,6 +116,7 @@ class UserInfo(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False, unique=True)  # unique=True asegura relación 1:1
     # Relación inversa con User
     user = relationship("User", back_populates="user_info")
+    image_user = relationship("ImageUser", back_populates="user_info", uselist=False)  # Relación 1:1
 
 
 class Restaurante(Base):
