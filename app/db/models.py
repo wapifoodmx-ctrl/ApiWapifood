@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql.schema import ForeignKey
 from app.db.database import Base
 from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
+from sqlalchemy.ext.hybrid import hybrid_property
 
 
 """
@@ -121,14 +122,14 @@ class ImageUser(Base):
 class UserInfo(Base):
     __tablename__ = "user_info"
     id_user_info = Column(Integer, primary_key=True, autoincrement=True)
-    nombre = Column(String(50), nullable=False)
-    apellido = Column(String(50), nullable=False)
-    email = Column(String(50), nullable=False)
-    telefono = Column(String(50), nullable=False)
-    direccion = Column(String(50), nullable=False)
-    codigo_postal = Column(Integer, nullable=False)
-    ciudad = Column(String(50), nullable=False)
-    alcaldia = Column(String(50), nullable=False)
+    nombre = Column(String(50), nullable=True)
+    apellido = Column(String(50), nullable=True)
+    email = Column(String(50), nullable=True)
+    telefono = Column(String(50), nullable=True)
+    direccion = Column(String(50), nullable=True)
+    codigo_postal = Column(Integer, nullable=True)
+    ciudad = Column(String(50), nullable=True)
+    alcaldia = Column(String(50), nullable=True)
 
     # Relaciones
     # Clave foránea a la tabla 'users'
@@ -184,16 +185,19 @@ class Products(Base):
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
     restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
-    category_id = Column(Integer, ForeignKey("categoria.id_categoria"), nullable = False)  # Clave foránea a la tabla 'categoria'
-    #Relaciones
-    #category = Column(String(200), nullable=False)
+    category_id = Column(Integer, ForeignKey("categoria.id_categoria"), nullable=False)  # Clave foránea a la tabla 'categoria'
+    
+    # Relaciones
     category = relationship("Categoria", back_populates="productos")
-    #details = relationship("OrdersDetails", back_populates="product")
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
     images = relationship("Image", back_populates="product")  # Relación inversa
     restaurante = relationship("Restaurante", back_populates="products")  # Relación inversa
 
+    @hybrid_property
+    def nombre_categoria(self):
+        """Obtiene el nombre de la categoría desde la relación con Categoria."""
+        return self.category.nombre_categoria
 
 
 class OrdersDetails(Base):
@@ -234,7 +238,7 @@ class Categoria(Base):
     status = Column(String(10), default="activo")  
     productos = relationship("Products", back_populates="category")
     restaurante = relationship("Restaurante", back_populates="categorias")
-    
-    
+
+
 
 

@@ -185,6 +185,7 @@ def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado
 def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Session):
     """
     Actualiza o crea la información del usuario autenticado.
+    Los campos no enviados en el JSON se mantienen con su valor actual o se asignan como null.
     """
     # Parsear el JSON recibido
     try:
@@ -196,7 +197,7 @@ def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Sessio
     user_info_record = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
 
     if user_info_record:
-        # Actualizar los campos existentes
+        # Actualizar los campos existentes solo si están presentes en el JSON
         user_info_record.nombre = user_info_data.get("nombre", user_info_record.nombre)
         user_info_record.apellido = user_info_data.get("apellido", user_info_record.apellido)
         user_info_record.email = user_info_data.get("email", user_info_record.email)
@@ -206,7 +207,7 @@ def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Sessio
         user_info_record.ciudad = user_info_data.get("ciudad", user_info_record.ciudad)
         user_info_record.alcaldia = user_info_data.get("alcaldia", user_info_record.alcaldia)
     else:
-        # Crear un nuevo registro de UserInfo
+        # Crear un nuevo registro de UserInfo con valores opcionales
         user_info_record = UserInfo(
             user_id=user_id,
             nombre=user_info_data.get("nombre"),

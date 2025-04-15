@@ -73,15 +73,15 @@ class UserId(BaseModel):
 
 class UserInfo(BaseModel):
     id_user_info: int | None = None
-    nombre: str
-    apellido: str
-    email: str
-    telefono: str
-    direccion: str
-    codigo_postal: int
-    ciudad: str
-    alcaldia: str
-    user_id: int | None = None # Clave foránea que conecta con User
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    codigo_postal: Optional[int] = None
+    ciudad: Optional[str] = None
+    alcaldia: Optional[str] = None
+    user_id: int | None = None  # Clave foránea que conecta con User
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -171,15 +171,15 @@ class ProductsCreate(BaseModel):
 
 #Esquema de los productos 
 class Products(BaseModel):
-    id_products:int | None = None
-    name:str
-    description:str
-    price:Decimal
-    category_id:int 
-    status:StatusEnum | None = None
-    image_url: str | None = None  # Nuevo campo para la URL de la imagen
+    id_products: int | None = None
+    name: str
+    description: str
+    price: Decimal
+    category_id: int
+    status: StatusEnum | None = None
+    image_url: str | None = None
+    nombre_categoria: Optional[str] = None  # Agregar el campo calculado
 
-    #owner_id: int | None = None  # Añadir owner_id 
     class Config:
         from_attributes = True
 
@@ -252,33 +252,31 @@ class ImageUserResponse(BaseModel):
 
 
 class UserInfoCreate(BaseModel):
-    nombre: str
-    apellido: str
-    email: str
-    telefono: str
-    direccion: str
-    codigo_postal: int
-    ciudad: str
-    alcaldia: str
+    nombre: str | None = None 
+    apellido: str | None = None
+    email: str | None = None
+    telefono: str | None = None
+    direccion: str | None = None
+    codigo_postal: int | None = None
+    ciudad: str | None = None 
+    alcaldia: str | None = None
 
     class Config:
         from_attributes = True
 
 class UserInfoResponse(BaseModel):
     id_user_info: int | None = None
-    nombre: str
-    apellido: str
-    email: str
-    telefono: str
-    direccion: str
-    codigo_postal: int
-    ciudad: str
-    alcaldia: str
-    user_id: int | None = None
-    image_user: Optional[ImageUserResponse] = None  # Incluye la imagen si existe
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    codigo_postal: Optional[int] = None
+    ciudad: Optional[str] = None
+    alcaldia: Optional[str] = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class CategoriaCreate(BaseModel):
     nombre_categoria: str
