@@ -73,15 +73,15 @@ class Image(Base):
 class Restaurante(Base):
     __tablename__= "restaurante"
     id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
-    nombre_restaurante = Column(String(50), nullable=False)
-    ciudad = Column(String(50), nullable=False)
-    estado_provincia = Column(String(50), nullable=False)
-    alcadia = Column(String(50), nullable=False)
-    owner_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Nueva clave foránea para el propietario
-    #releaciones 
+    nombre_restaurante = Column(String(50), nullable=True)  # Ahora opcional
+    ciudad = Column(String(50), nullable=True)  # Ahora opcional
+    estado_provincia = Column(String(50), nullable=True)  # Ahora opcional
+    alcadia = Column(String(50), nullable=True)  # Ahora opcional
+    owner_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Clave foránea obligatoria
+    # Relaciones
     users = relationship("User", back_populates="restaurante", foreign_keys=lambda: [User.restaurante_id])
-    products = relationship("Products", back_populates="restaurante")  # Un restaurante tiene muchos productos
-    categorias = relationship("Categoria", back_populates="restaurante")  # Un restaurante tiene muchas categorías
+    products = relationship("Products", back_populates="restaurante")
+    categorias = relationship("Categoria", back_populates="restaurante")
     owner = relationship("User", back_populates="restaurantes_propios", foreign_keys=[owner_id])
 
 

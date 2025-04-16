@@ -297,22 +297,21 @@ class Categoria(BaseModel):
         from_attributes = True
 
 
-class RestauranteCreate(BaseModel):
-    nombre_restaurante: str
-    ciudad: str
-    estado_provincia: str
-    alcadia: str
-    owner_id: int | None = None  # ID del propietario (usuario)
+class RestauranteBase(BaseModel):
+    nombre_restaurante: Optional[str] = None
+    ciudad: Optional[str] = None
+    estado_provincia: Optional[str] = None
+    alcadia: Optional[str] = None
+
+class RestauranteCreate(RestauranteBase):
+    pass  # Hereda los campos opcionales de RestauranteBase
+
+class RestauranteUpdate(RestauranteBase):
+    pass  # También hereda los campos opcionales
+
+class Restaurante(RestauranteBase):
+    id_restaurante: int
+    owner_id: int
 
     class Config:
-        from_attributes = True
-
-class Restaurante(BaseModel):
-    id_restaurante: int | None = None
-    nombre_restaurante: str
-    ciudad: str
-    estado_provincia: str
-    alcadia: str
-
-    class Config:
-        from_attributes = True
+        orm_mode = True
