@@ -39,11 +39,6 @@ class StatusEnum(str, Enum):
     activo = "activo"
     inactivo = "inactivo"
 
-class PaymentMethodEnum(str, Enum):
-    efectivo = "efectivo"
-    tarjeta = "tarjeta"
-    pasarela = "pasarela"
-
 
 
 
@@ -106,42 +101,53 @@ class ShowUser(BaseModel):
 #Se inserta el id de la orden, el id del producto, la cantidad, el precio unitario
 #y el subtotal
 class OrdersDetails(BaseModel):
-    #id_orders_details:int
-    order_id:int
+    id_orders_details:int | None = None
+    order_id:int | None = None
     product_id:int
     quantity:int
-    #unit_price:Decimal
-    #subtotal:Decimal
+    unit_price:Decimal
+    subtotal:Decimal
+    class Config:
+        from_attributes = True
+
+class OrdersDetailsSchema(BaseModel):
+    id_orders_details: int | None = None
+    order_id: int | None = None
+    product_id: int
+    quantity: int
+    unit_price: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+    subtotal: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+
     class Config:
         from_attributes = True
 
 
-#class Orders(BaseModel):
 class Orders(BaseModel):
-    #id_orders: int
-    mesa_id: int
-    state:RoleOrders
-    date_time:datetime
-    total:Decimal
-    orderscol:str
-    order_details: List[OrdersDetails]  # Agregar los detalles de la orden
-    class Config:
-        from_attributes = True
-
-
-class OrdersResponse(BaseModel):
-    id_orders: int
-    #mesa_id: int
+    id_orders: int | None = None
     state: RoleOrders
     date_time: datetime
     total: Decimal
     orderscol: str
     user_id: int
-    order_details: List[OrdersDetails]
+    product_name: str
+    order_details: List[OrdersDetailsSchema]
 
     class Config:
         from_attributes = True
 
+
+class OrdersResponse(BaseModel):
+    id_orders: int | None = None
+    state: RoleOrders
+    date_time: datetime
+    total: Decimal  # Cambiar a Decimal para coincidir con OrdersModel
+    orderscol: str
+    user_id: int | None = None
+    product_name: str
+    details: List[OrdersDetailsSchema]  # Cambiar a "details" para mantener consistencia
+
+    class Config:
+        from_attributes = True
 
 
 #esquema de las mesas donde tenemos state que es una enumeracion
@@ -180,6 +186,7 @@ class Products(BaseModel):
     image_url: str | None = None
     nombre_categoria: Optional[str] = None  # Agregar el campo calculado
 
+
     class Config:
         from_attributes = True
 
@@ -191,6 +198,16 @@ class ProductsPatch(BaseModel):  # Nuevo esquema para actualizaciones parciales
     category_id: Optional[int] = None
     quantity: Optional[int] = None
     status: Optional[StatusEnum] = None
+
+class TopProduct(BaseModel):
+    position: int
+    name: str
+    price: float
+    units_sold: int
+    subtotal: float
+
+    class Config:
+        from_attributes = True
 
 #Esquema de los pagos
 #Se inserta el id del pago, el id de la orden, el metodo de pago, 
@@ -312,6 +329,33 @@ class RestauranteUpdate(RestauranteBase):
 class Restaurante(RestauranteBase):
     id_restaurante: int
     owner_id: int
+
+    class Config:
+        orm_mode = True
+
+class OrderDetailCreate(BaseModel):
+    product_id: int
+    quantity: int
+
+class OrdersCreate(BaseModel):
+    details: List[OrderDetailCreate]
+
+class OrderDetailResponse(BaseModel):
+    product_id: int
+    quantity: int
+    unit_price: float
+    subtotal: float
+
+    class Config:
+        orm_mode = True
+
+
+class OrdersResponse(BaseModel):
+    id_orders: int
+    state: str
+    date_time: datetime
+    total: float
+    details: List[OrderDetailResponse]
 
     class Config:
         orm_mode = True

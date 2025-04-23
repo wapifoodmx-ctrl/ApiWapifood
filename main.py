@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
-from app.routers import user, tables, products, orders, payments, auth, categoria, restaurante
+from app.routers import user, tables, products, orders, payments, auth, categoria, restaurante, solicitarOTP
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from typing import List, Dict
@@ -9,9 +9,6 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
-
-
-
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 # Lista de clientes WebSocket con user_id
@@ -27,13 +24,14 @@ websocket_clients: List[Dict[str, WebSocket | int]] = []
 #delete para eliminar datos
 app = FastAPI() 
 app.include_router(user.router)
+app.include_router(solicitarOTP.router)
 app.include_router(restaurante.router)
 app.include_router(auth.router)
 # Incluir los routers con prefijos específicos
 app.include_router(categoria.router)
 app.include_router(products.router)
-app.include_router(tables.router)
 app.include_router(orders.router)
+app.include_router(tables.router)
 app.include_router(payments.router)
 
 
@@ -60,7 +58,7 @@ app.add_middleware(
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors()},
+        content={"detail": exc.errors(), "body": exc.body},
     )
 
 if __name__ == "__main__":
