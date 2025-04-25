@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException, UploadFile, File, Form
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Annotated, Optional
 from app.db.database import get_db
 from app.db.models import Image, User
@@ -8,6 +8,7 @@ from app.schemas import ImageCreate, ImageResponse, TopProduct
 from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User, Image as ImageModel
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
+from app.schemas import ProductUpdateSchema
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,9 @@ router = APIRouter(
         prefix="/products",
         tags=["Products"],
     )
+
+# URL base del servidor para las imágenes
+BASE_URL = "http://192.168.1.69:8000"
 # Directorio donde se guardarán las imágenes
 UPLOAD_DIR = Path("app/static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,14 +43,47 @@ def get_top_products(db: Session = Depends(get_db), current_user: User = Depends
     top_products = product_repo.get_top_products(db, user_id)
     return top_products
 
+
+
 @router.get("/", response_model=List[ProductsSchema], status_code=status.HTTP_200_OK)
 def obtenemos_productos(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Obtiene todos los productos creados por el usuario autenticado."""
-    productos = db.query(ProductsModel).filter(ProductsModel.owner_id == current_user.id_users).all()
-    return [ProductsSchema.from_orm(producto) for producto in productos]
+    productos = (
+        db.query(ProductsModel)
+        .filter(ProductsModel.owner_id == current_user.id_users)
+        .options(joinedload(ProductsModel.images))  # Cargar la relación images
+        .options(joinedload(ProductsModel.category))  # Cargar la relación category
+        .all()
+    )
+
+    if not productos:
+        raise HTTPException(status_code=404, detail="No se encontraron productos para este usuario")
+
+    # Convertir los productos a diccionarios y construir URLs completas para las imágenes
+    productos_dicts = []
+    for producto in productos:
+        # Construir URLs completas usando el file_name de cada imagen
+        image_urls = [
+            f"{BASE_URL}/static/uploads/{image.file_name}"
+            for image in producto.images
+        ]
+        producto_dict = {
+            "id_products": producto.id_products,
+            "name": producto.name,
+            "description": producto.description,
+            "price": producto.price,
+            "category_id": producto.category_id,
+            "status": producto.status,
+            "image_url": image_urls,  # Usar URLs completas
+            "nombre_categoria": producto.nombre_categoria
+        }
+        productos_dicts.append(producto_dict)
+
+    return [ProductsSchema.model_validate(producto_dict) for producto_dict in productos_dicts]
+
 
 @router.get("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def obtener_producto_id(
@@ -195,7 +232,6 @@ async def crear_producto_owner_image(
     description: str = Form(...),
     price: float = Form(...),
     category_id: int = Form(...),
-    quantity: int = Form(...),
     file: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -203,8 +239,6 @@ async def crear_producto_owner_image(
 ):
     """Crea un nuevo producto asignando el owner_id del usuario autenticado y opcionalmente sube una imagen asociada."""
     # 1. Validar la cantidad (aunque no se usará para crear órdenes aquí, se mantiene para validación)
-    if quantity <= 0:
-        raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
 
     # 2. Crear el producto
     db_product = ProductsModel(
@@ -257,14 +291,10 @@ async def crear_producto_owner_image(
     return ProductsSchema.from_orm(db_product)
 
 
-
-
-
-
-@router.put("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
+@router.patch("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def actualizar_producto(
     product_id: int,
-    product_update: ProductsSchema,
+    product_update: ProductUpdateSchema,  # Usa el esquema de actualización parcial
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
@@ -287,13 +317,18 @@ def actualizar_producto(
             detail="No tienes permiso para modificar este producto"
         )
     
-    # Actualizamos los campos del producto
-    db_product.name = product_update.name
-    db_product.description = product_update.description
-    db_product.price = product_update.price
-    db_product.status = product_update.status
-    db_product.category = product_update.category
-    
+    # Actualizamos solo los campos proporcionados
+    if product_update.name is not None:
+        db_product.name = product_update.name
+    if product_update.description is not None:
+        db_product.description = product_update.description
+    if product_update.price is not None:
+        db_product.price = product_update.price
+    if product_update.status is not None:
+        db_product.status = product_update.status
+    if product_update.category_id is not None:
+        db_product.category_id = product_update.category_id
+
     # Guardamos los cambios en la base de datos
     db.commit()
     db.refresh(db_product)

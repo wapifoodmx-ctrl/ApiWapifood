@@ -164,9 +164,9 @@ class Tables(BaseModel):
 
 # Esquema para crear un producto (con campos adicionales)
 class ProductsCreate(BaseModel):
-    name: str
-    description: str
-    price: Decimal
+    name: str | None = None
+    description: str | None = None
+    price: Decimal | None = None
     category_id: int | None = None  # Cambié a int | None
     status: Optional[StatusEnum] = None
     #mesa_id: Optional[int] = 1  # Para el pedido
@@ -175,15 +175,40 @@ class ProductsCreate(BaseModel):
     class Config:
         from_attributes = True
 
+class ImageResponse(BaseModel):
+    file_name: str
+    file_path: str
+
+    @property
+    def url(self):
+        # Construye la URL completa (ajusta según tu configuración)
+        return f"http://192.168.1.69/static/uploads/{self.file_name}"
+
+    class Config:
+        orm_mode = True
+
+class ProductsSchema(BaseModel):
+    id_products: int
+    name: str
+    description: Optional[str]
+    price: float
+    status: str
+    category_id: Optional[int]
+    owner_id: int
+    image_url: List[ImageResponse] = []  # Incluye las imágenes asociadas
+
+    class Config:
+        orm_mode = True
+
 #Esquema de los productos 
 class Products(BaseModel):
     id_products: int | None = None
-    name: str
-    description: str
-    price: Decimal
-    category_id: int
+    name: str | None = None
+    description: str | None = None
+    price: Decimal | None = None
+    category_id: int | None = None  # Cambié a int | None
     status: StatusEnum | None = None
-    image_url: str | None = None
+    image_url: List[str] = []
     nombre_categoria: Optional[str] = None  # Agregar el campo calculado
 
 
@@ -314,6 +339,36 @@ class Categoria(BaseModel):
         from_attributes = True
 
 
+class ProductInCategory(BaseModel):
+    id_products: int | None = None
+    name: str
+    description: str
+    price: Decimal
+    category_id: int
+    status: StatusEnum | None = None
+    image_url: List[str] = []  # Lista de URLs de imágenes
+    nombre_categoria: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# Esquema para una categoría con sus productos
+class CategoryWithProducts(BaseModel):
+    nombre_categoria: str
+    productos: List[ProductInCategory]
+
+    class Config:
+        from_attributes = True
+
+# Esquema para categorías simples (solo id y nombre)
+class CategoriaSimple(BaseModel):
+    id_categoria: int
+    nombre_categoria: str
+
+    class Config:
+        from_attributes = True
+
+
 class RestauranteBase(BaseModel):
     nombre_restaurante: Optional[str] = None
     ciudad: Optional[str] = None
@@ -359,3 +414,11 @@ class OrdersResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class ProductUpdateSchema(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    status: Optional[str] = None
+    category_id: Optional[int] = None
