@@ -14,4 +14,4 @@ requests
 fastapi[all]
 stripe
 pyotp
-app.
+stripe

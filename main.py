@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
-from app.routers import user, tables, products, orders, payments, auth, categoria, restaurante, solicitarOTP
+from app.routers import user, tables, products, orders, payments, auth, categoria, restaurante, solicitarOTP, analytics
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import WebSocket
 from typing import List, Dict
@@ -31,6 +31,7 @@ app.include_router(auth.router)
 app.include_router(categoria.router)
 app.include_router(products.router)
 app.include_router(orders.router)
+app.include_router(analytics.router)
 app.include_router(tables.router)
 app.include_router(payments.router)
 

@@ -9,25 +9,20 @@ from datetime import datetime
 from app.db.database import get_db
 from app.db.models import Payments, User
 from app.repository.auth import get_current_user
+from app.schemas import PaymentRequest, Item
+
 
 
 # Cargar variables de entorno
 load_dotenv()
-stripe.api_key = os.getenv("STRIPE_API_KEY")
+stripe.api_key = os.getenv("sk_test_51RJgGcAcLh3gfk7ACyuN3OtnvJxTWP5sKjHyHrn6MV7yPs8QHUh8ggpqNuLNu3XnthLP56hefSDD6QdM51eVRSis00BXaGanBe")
 
 router = APIRouter(
     prefix="/payments",
     tags=["payments"]
 )
 
-class Item(BaseModel):
-    id: str
-    quantity: int
-    price: int
 
-class PaymentRequest(BaseModel):
-    items: List[Item]
-    order_id: int  # Agregamos order_id para asociar el pago a un pedido
 
 def calculate_order_amount(items: List[Item]) -> int:
     """Calcula el monto total en centavos basado en los ítems."""

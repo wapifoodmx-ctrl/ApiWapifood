@@ -9,6 +9,7 @@ from app.db.models import Products as ProductsModel, Orders as OrdersModel, Orde
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
 from app.schemas import ProductUpdateSchema
+from app.db.models import Categoria
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -291,15 +292,31 @@ async def crear_producto_owner_image(
     return ProductsSchema.from_orm(db_product)
 
 
+
+
+
 @router.patch("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
-def actualizar_producto(
+async def actualizar_producto(
     product_id: int,
-    product_update: ProductUpdateSchema,  # Usa el esquema de actualización parcial
+    product_update: ProductUpdateSchema = Depends(),
+    file: UploadFile = File(None),  # La imagen es opcional
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """Actualiza un producto existente si pertenece al usuario autenticado."""
+    """
+    Actualiza un producto existente si pertenece al usuario autenticado.
+    Permite actualizar:
+    - Solo la imagen.
+    - Solo otros campos (name, description, price, status, category_id).
+    - La imagen y otros campos.
+    - Cualquier combinación de campos.
+    Los campos no proporcionados no se modifican.
+    """
+    # Depuración: Imprimir los datos recibidos
+    print(f"Datos recibidos: product_id={product_id}, update={product_update.dict()}, "
+          f"file={file.filename if file else None}, user_id={current_user.id_users}")
+
     # Buscamos el producto por ID
     db_product = db.query(ProductsModel).filter(ProductsModel.id_products == product_id).first()
     
@@ -317,23 +334,137 @@ def actualizar_producto(
             detail="No tienes permiso para modificar este producto"
         )
     
-    # Actualizamos solo los campos proporcionados
-    if product_update.name is not None:
-        db_product.name = product_update.name
-    if product_update.description is not None:
-        db_product.description = product_update.description
-    if product_update.price is not None:
-        db_product.price = product_update.price
-    if product_update.status is not None:
-        db_product.status = product_update.status
-    if product_update.category_id is not None:
-        db_product.category_id = product_update.category_id
+    try:
+        # Guardar los valores actuales del producto para comparar después
+        original_values = {
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": db_product.price,
+            "status": db_product.status,
+            "category_id": db_product.category_id
+        }
+        print(f"Valores originales del producto: {original_values}")
 
-    # Guardamos los cambios en la base de datos
-    db.commit()
-    db.refresh(db_product)
-    
+        # Caso 1: Actualizar los campos del producto (si se proporcionan)
+        # Solo se actualizan los campos que no sean None
+        updated_fields = []
+        if product_update.name is not None:
+            updated_fields.append(f"name={product_update.name}")
+            db_product.name = product_update.name
+        if product_update.description is not None:
+            updated_fields.append(f"description={product_update.description}")
+            db_product.description = product_update.description
+        if product_update.price is not None:
+            updated_fields.append(f"price={product_update.price}")
+            db_product.price = product_update.price
+        if product_update.status is not None:
+            allowed_statuses = ["activo", "inactivo"]
+            if product_update.status not in allowed_statuses:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El status debe ser uno de {allowed_statuses}"
+                )
+            updated_fields.append(f"status={product_update.status}")
+            db_product.status = product_update.status
+        if product_update.category_id is not None:
+            # Validar que la categoría exista
+            category = db.query(Categoria).filter(Categoria.id_categoria == product_update.category_id).first()
+            if not category:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Categoría con ID {product_update.category_id} no encontrada"
+                )
+            updated_fields.append(f"category_id={product_update.category_id}")
+            db_product.category_id = product_update.category_id
+
+        if updated_fields:
+            print(f"Campos actualizados del producto: {updated_fields}")
+        else:
+            print("No se proporcionaron campos para actualizar el producto.")
+
+        # Caso 2: Actualizar la imagen (si se proporciona un archivo)
+        if file:
+            print(f"Procesando nueva imagen: {file.filename}")
+            try:
+                # Validar el tipo de archivo (solo imágenes)
+                if not file.content_type.startswith("image/"):
+                    raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+
+                # Validar la extensión del archivo
+                allowed_extensions = {".jpg", ".jpeg", ".png", ".gif"}
+                file_extension = f".{file.filename.split('.')[-1].lower()}"
+                if file_extension not in allowed_extensions:
+                    raise HTTPException(status_code=400, detail="Solo se permiten imágenes con extensiones .jpg, .jpeg, .png o .gif")
+
+                # Buscar la imagen existente asociada al producto (si existe)
+                existing_image = db.query(Image).filter(Image.product_id == product_id).first()
+                if existing_image:
+                    print(f"Eliminando imagen existente: {existing_image.file_path}")
+                    # Eliminar el archivo físico del sistema de archivos
+                    old_file_path = Path(existing_image.file_path)
+                    if old_file_path.exists():
+                        old_file_path.unlink()  # Elimina el archivo anterior
+                    # Eliminar el registro de la imagen de la base de datos
+                    db.delete(existing_image)
+                    db.commit()  # Commit intermedio para asegurar que la imagen anterior se elimine
+
+                # Generar un nombre único para el nuevo archivo
+                unique_filename = f"{uuid.uuid4()}{file_extension}"
+                file_path = UPLOAD_DIR / unique_filename
+
+                # Guardar el nuevo archivo en el sistema de archivos
+                print(f"Guardando nueva imagen en: {file_path}")
+                with open(file_path, "wb") as buffer:
+                    content = await file.read()
+                    buffer.write(content)
+
+                # Crear un nuevo registro de imagen en la base de datos
+                print(f"Creando nuevo registro de imagen para product_id={product_id}")
+                db_image = Image(
+                    file_name=unique_filename,
+                    file_path=str(file_path),
+                    user_id=current_user.id_users,
+                    product_id=db_product.id_products
+                )
+                db.add(db_image)
+            except Exception as e:
+                db.rollback()
+                raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
+        else:
+            print("No se proporcionó una nueva imagen para actualizar.")
+
+        # Caso 3: Verificar si se hizo alguna actualización
+        if not updated_fields and not file:
+            print("No se proporcionaron campos ni imagen para actualizar. No se realizarán cambios.")
+            return ProductsSchema.from_orm(db_product)
+
+        # Confirmar todos los cambios
+        print("Confirmando cambios en la base de datos...")
+        db.commit()
+        db.refresh(db_product)
+        print("Cambios confirmados exitosamente")
+
+        # Verificar los valores después de la actualización
+        updated_values = {
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": db_product.price,
+            "status": db_product.status,
+            "category_id": db_product.category_id
+        }
+        print(f"Valores después de la actualización: {updated_values}")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error al confirmar cambios: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al actualizar el producto: {str(e)}")
+
     return ProductsSchema.from_orm(db_product)
+
+
+
+
+#---------------------------------------------------------------------------------------------
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 def eliminar_producto(

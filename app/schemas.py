@@ -59,6 +59,7 @@ class User(BaseModel):
     email: str | None = None
     password: str 
     rol: RoleEnum  | None = None
+    restaurante_id: Optional[int] = None  # ID del restaurante asociado (opcional)
 
     class Config:
         from_attributes = True
@@ -422,3 +423,28 @@ class ProductUpdateSchema(BaseModel):
     price: Optional[float] = None
     status: Optional[str] = None
     category_id: Optional[int] = None
+
+
+
+# Esquema para las métricas
+class Metric(BaseModel):
+    value: float  # Valor actual (puede ser un número o porcentaje)
+    change: float  # Cambio porcentual respecto al período anterior
+    change_label: str  # Etiqueta del cambio (por ejemplo, "vs la semana pasada")
+
+class AnalyticsResponse(BaseModel):
+    total_sales: Metric
+    total_orders: Metric
+    new_customers: Metric
+    average_daily_sales: Metric  
+
+
+
+class Item(BaseModel):
+    id: str
+    quantity: int
+    price: int
+
+class PaymentRequest(BaseModel):
+    items: List[Item]
+    order_id: int  # Agregamos order_id para asociar el pago a un pedido
