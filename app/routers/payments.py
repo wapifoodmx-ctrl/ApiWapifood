@@ -15,7 +15,11 @@ from app.schemas import PaymentRequest, Item
 
 # Cargar variables de entorno
 load_dotenv()
-stripe.api_key = os.getenv("sk_test_51RJgGcAcLh3gfk7ACyuN3OtnvJxTWP5sKjHyHrn6MV7yPs8QHUh8ggpqNuLNu3XnthLP56hefSDD6QdM51eVRSis00BXaGanBe")
+stripe.api_key = os.getenv("STRIPE_API_KEY")
+
+# Verificar que la clave se cargó correctamente (para depuración)
+if not stripe.api_key:
+    raise ValueError("No se encontró la clave de API de Stripe en las variables de entorno")
 
 router = APIRouter(
     prefix="/payments",

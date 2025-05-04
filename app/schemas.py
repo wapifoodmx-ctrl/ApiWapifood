@@ -59,7 +59,7 @@ class User(BaseModel):
     email: str | None = None
     password: str 
     rol: RoleEnum  | None = None
-    restaurante_id: Optional[int] = None  # ID del restaurante asociado (opcional)
+    #restaurante_id: Optional[int] = None  # ID del restaurante asociado (opcional)
 
     class Config:
         from_attributes = True
@@ -370,24 +370,24 @@ class CategoriaSimple(BaseModel):
         from_attributes = True
 
 
-class RestauranteBase(BaseModel):
-    nombre_restaurante: Optional[str] = None
-    ciudad: Optional[str] = None
-    estado_provincia: Optional[str] = None
-    alcadia: Optional[str] = None
+# class RestauranteBase(BaseModel):
+#     nombre_restaurante: Optional[str] = None
+#     ciudad: Optional[str] = None
+#     estado_provincia: Optional[str] = None
+#     alcadia: Optional[str] = None
 
-class RestauranteCreate(RestauranteBase):
-    pass  # Hereda los campos opcionales de RestauranteBase
+# class RestauranteCreate(RestauranteBase):
+#     pass  # Hereda los campos opcionales de RestauranteBase
 
-class RestauranteUpdate(RestauranteBase):
-    pass  # También hereda los campos opcionales
+# class RestauranteUpdate(RestauranteBase):
+#     pass  # También hereda los campos opcionales
 
-class Restaurante(RestauranteBase):
-    id_restaurante: int
-    owner_id: int
+# class Restaurante(RestauranteBase):
+#     id_restaurante: int
+#     owner_id: int
 
-    class Config:
-        orm_mode = True
+#     class Config:
+#         orm_mode = True
 
 class OrderDetailCreate(BaseModel):
     product_id: int
@@ -411,6 +411,8 @@ class OrdersResponse(BaseModel):
     state: str
     date_time: datetime
     total: float
+    product_name: str  # Asegúrate de incluir este campo
+    payment_method: str  # Nuevo campo
     details: List[OrderDetailResponse]
 
     class Config:
@@ -441,7 +443,7 @@ class AnalyticsResponse(BaseModel):
 
 
 class Item(BaseModel):
-    id: str
+    id: Optional[str] = None
     quantity: int
     price: int
 

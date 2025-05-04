@@ -7,6 +7,7 @@ from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User
 from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate
 from app.db.models import OrdersDetails as OrdersDetailsModel
+from app.db.models import Payments as PaymentsModel
 from app.repository.auth import get_current_user
 from decimal import Decimal
 from datetime import datetime
@@ -89,6 +90,7 @@ def obtenemos_orders_details(
         db.query(OrdersModel)
         .filter(OrdersModel.user_id == current_user.id_users)
         .options(joinedload(OrdersModel.order_details))
+        .options(joinedload(OrdersModel.payments))  # Asumiendo que hay una relación definida
         .all()
     )
     
@@ -98,6 +100,10 @@ def obtenemos_orders_details(
     # Convertir los objetos OrdersModel a diccionarios
     orders_dicts = []
     for order in orders:
+        # Buscar el método de pago en la tabla Payments
+        payment = db.query(PaymentsModel).filter(PaymentsModel.order_id == order.id_orders).first()
+        payment_method = payment.payment_method if payment else "No especificado"
+
         order_dict = {
             "id_orders": order.id_orders,
             "state": order.state,
@@ -106,6 +112,7 @@ def obtenemos_orders_details(
             "orderscol": order.orderscol,
             "user_id": order.user_id,
             "product_name": order.product_name,
+            "payment_method": payment_method,  # Método de pago
             "details": [  # Mapear los detalles manualmente
                 {
                     "id_orders_details": detail.id_orders_details,
@@ -142,3 +149,33 @@ def obtenemos_orders_details(
 #         raise HTTPException(status_code=400, detail=f"Error obteniendo las órdenes: {str(e)}")
 
 
+@router.get("/summary", response_model=dict, status_code=status.HTTP_200_OK)
+def get_order_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtiene un resumen de las órdenes del usuario autenticado (Total, Pendientes, En Proceso, Completados)."""
+    # Total de órdenes
+    total_orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).count()
+
+    # Contar órdenes por estado
+    pending = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users,
+        OrdersModel.state == "Pendiente"
+    ).count()
+    in_process = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users,
+        OrdersModel.state == "En Proceso"
+    ).count()
+    completed = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users,
+        OrdersModel.state == "Completado"
+    ).count()
+
+    # Retornar el resumen
+    return {
+        "Total de Pedidos": total_orders,
+        "Pendientes": pending,
+        "En Proceso": in_process,
+        "Completados": completed
+    }

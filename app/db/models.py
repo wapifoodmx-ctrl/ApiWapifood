@@ -70,19 +70,19 @@ class Image(Base):
     user = relationship("User", back_populates="images")
     product = relationship("Products", back_populates="images")  # Relación con Products
 
-class Restaurante(Base):
-    __tablename__= "restaurante"
-    id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
-    nombre_restaurante = Column(String(50), nullable=True)  # Ahora opcional
-    ciudad = Column(String(50), nullable=True)  # Ahora opcional
-    estado_provincia = Column(String(50), nullable=True)  # Ahora opcional
-    alcadia = Column(String(50), nullable=True)  # Ahora opcional
-    owner_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Clave foránea obligatoria
-    # Relaciones
-    users = relationship("User", back_populates="restaurante", foreign_keys=lambda: [User.restaurante_id])
-    products = relationship("Products", back_populates="restaurante")
-    categorias = relationship("Categoria", back_populates="restaurante")
-    owner = relationship("User", back_populates="restaurantes_propios", foreign_keys=[owner_id])
+# class Restaurante(Base):
+#     __tablename__= "restaurante"
+#     id_restaurante = Column(Integer, primary_key=True, autoincrement=True)
+#     nombre_restaurante = Column(String(50), nullable=True)  # Ahora opcional
+#     ciudad = Column(String(50), nullable=True)  # Ahora opcional
+#     estado_provincia = Column(String(50), nullable=True)  # Ahora opcional
+#     alcadia = Column(String(50), nullable=True)  # Ahora opcional
+#     owner_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Clave foránea obligatoria
+#     # Relaciones
+#     users = relationship("User", back_populates="restaurante", foreign_keys=lambda: [User.restaurante_id])
+#     products = relationship("Products", back_populates="restaurante")
+#     #categorias = relationship("Categoria", back_populates="restaurante")
+#     owner = relationship("User", back_populates="restaurantes_propios", foreign_keys=[owner_id])
 
 
 
@@ -103,9 +103,9 @@ class User(Base):
     #Nueva relación con UserInfo
     user_info = relationship("UserInfo", back_populates="user", uselist=False)  # uselist=False asegura relación 1:1
     # Relación con Restaurante como empleado (un usuario pertenece a un restaurante)
-    restaurante = relationship("Restaurante", back_populates="users", foreign_keys=[restaurante_id])
+    #restaurante = relationship("Restaurante", back_populates="users", foreign_keys=[restaurante_id])
     # Relación con Restaurante como propietario (un usuario puede ser dueño de varios restaurantes)
-    restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
+    #restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
 
 
     
@@ -184,7 +184,7 @@ class Products(Base):
     price = Column(Decimal(10, 2))
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
-    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
+    #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
     category_id = Column(Integer, ForeignKey("categoria.id_categoria"), nullable=False)  # Clave foránea a la tabla 'categoria'
     
     # Relaciones
@@ -192,7 +192,7 @@ class Products(Base):
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
     images = relationship("Image", back_populates="product")  # Relación inversa
-    restaurante = relationship("Restaurante", back_populates="products")  # Relación inversa
+    #restaurante = relationship("Restaurante", back_populates="products")  # Relación inversa
 
     @hybrid_property
     def nombre_categoria(self):
@@ -233,11 +233,12 @@ class Categoria(Base):
     nombre_categoria = Column(String(50), unique=True, nullable=False)
     descripcion_categoria = Column(String(255), nullable=False)
     status = Column(String(10), default="activo")
-    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=False)  # Nueva clav
+    #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=False)  # Nueva clav
     # Relación con productos
-    status = Column(String(10), default="activo")  
     productos = relationship("Products", back_populates="category")
-    restaurante = relationship("Restaurante", back_populates="categorias")
+    #restaurante = relationship("Restaurante", back_populates="categorias")
+    owner_id = Column(Integer, ForeignKey("users.id_users"))  # Relación con el usuario
+    
 
 
 

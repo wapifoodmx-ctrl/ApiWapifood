@@ -23,6 +23,58 @@ BASE_URL = os.getenv("BASE_URL", "http://192.168.1.69:8000")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
+# @router.post("/", response_model=CategoriaSchema, status_code=status.HTTP_201_CREATED)
+# def crear_categoria(
+#     categoria: CategoriaCreate,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     token: str = Depends(oauth2_scheme)
+# ):
+#     """
+#     Crea una nueva categoría para un restaurante del usuario autenticado, deduciendo el restaurante_id.
+#     """
+#     # Buscar un restaurante donde el usuario sea propietario o empleado
+#     restaurante = (
+#         db.query(Restaurante)
+#         .filter(
+#             (Restaurante.owner_id == current_user.id_users) |  # El usuario es propietario
+#             (Restaurante.id_restaurante == current_user.restaurante_id)  # O el usuario es empleado
+#         )
+#         .first()
+#     )
+
+#     if not restaurante:
+#         raise HTTPException(
+#             status_code=status.HTTP_403_FORBIDDEN,
+#             detail="No tienes restaurantes asociados para crear categorías"
+#         )
+
+#     # Verificar si ya existe una categoría con el mismo nombre
+#     categoria_existente = db.query(CategoriaModel).filter(CategoriaModel.nombre_categoria == categoria.nombre_categoria).first()
+#     if categoria_existente:
+#         raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+
+#     # Crear la nueva categoría
+#     nueva_categoria = CategoriaModel(
+#         nombre_categoria=categoria.nombre_categoria,
+#         descripcion_categoria=categoria.descripcion_categoria,
+#         status=categoria.status or "activo",
+#         restaurante_id=restaurante.id_restaurante  # Asignamos el restaurante_id deducido
+#     )
+
+#     try:
+#         db.add(nueva_categoria)
+#         db.commit()
+#         db.refresh(nueva_categoria)
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Error al crear la categoría: {str(e)}"
+#         )
+
+#     return nueva_categoria
+
 @router.post("/", response_model=CategoriaSchema, status_code=status.HTTP_201_CREATED)
 def crear_categoria(
     categoria: CategoriaCreate,
@@ -31,35 +83,26 @@ def crear_categoria(
     token: str = Depends(oauth2_scheme)
 ):
     """
-    Crea una nueva categoría para un restaurante del usuario autenticado, deduciendo el restaurante_id.
+    Crea una nueva categoría asociada al usuario autenticado.
     """
-    # Buscar un restaurante donde el usuario sea propietario o empleado
-    restaurante = (
-        db.query(Restaurante)
+    # Verificar si ya existe una categoría con el mismo nombre para el usuario autenticado
+    categoria_existente = (
+        db.query(CategoriaModel)
         .filter(
-            (Restaurante.owner_id == current_user.id_users) |  # El usuario es propietario
-            (Restaurante.id_restaurante == current_user.restaurante_id)  # O el usuario es empleado
+            CategoriaModel.nombre_categoria == categoria.nombre_categoria,
+            CategoriaModel.owner_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .first()
     )
-
-    if not restaurante:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes restaurantes asociados para crear categorías"
-        )
-
-    # Verificar si ya existe una categoría con el mismo nombre
-    categoria_existente = db.query(CategoriaModel).filter(CategoriaModel.nombre_categoria == categoria.nombre_categoria).first()
     if categoria_existente:
-        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre")
+        raise HTTPException(status_code=400, detail="Ya existe una categoría con ese nombre para este usuario")
 
-    # Crear la nueva categoría
+    # Crear la nueva categoría asociada al usuario autenticado
     nueva_categoria = CategoriaModel(
         nombre_categoria=categoria.nombre_categoria,
         descripcion_categoria=categoria.descripcion_categoria,
         status=categoria.status or "activo",
-        restaurante_id=restaurante.id_restaurante  # Asignamos el restaurante_id deducido
+        owner_id=current_user.id_users  # Asociar la categoría al usuario autenticado
     )
 
     try:
@@ -74,7 +117,6 @@ def crear_categoria(
         )
 
     return nueva_categoria
-
 
 #---------------------------------------------------------------------------------------------------
 
@@ -119,20 +161,7 @@ def obtener_categorias_con_productos(
     return resultado
 
 
-
-# @router.get("/", response_model=List[CategoriaSimple], status_code=status.HTTP_200_OK)
-# def obtener_lista_categorias(
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-    
-# ):
-#     """Obtiene una lista de todas las categorías con solo id_categoria y nombre_categoria."""
-#     categorias = db.query(CategoriaModel).all()
-    
-#     if not categorias:
-#         raise HTTPException(status_code=404, detail="No se encontraron categorías")
-
-#     return categorias
+# ---------------------------------------------------------------------------------------------------
 
 
 @router.get("/", response_model=List[CategoriaSimple], status_code=status.HTTP_200_OK)
@@ -141,19 +170,15 @@ def obtener_lista_categorias(
     current_user: User = Depends(get_current_user)
 ):
     """Obtiene una lista de categorías asociadas a los restaurantes del usuario autenticado."""
-    # Obtener los IDs de los restaurantes donde el usuario es propietario
-    restaurantes = db.query(Restaurante).filter(Restaurante.owner_id == current_user.id_users).all()
-    
-    if not restaurantes:
-        raise HTTPException(status_code=404, detail="No se encontraron restaurantes para este usuario")
-
-    # Extraer los IDs de los restaurantes
-    restaurantes_ids = [restaurante.id_restaurante for restaurante in restaurantes]
-
-    # Obtener las categorías asociadas a esos restaurantes
-    categorias = db.query(Categoria).filter(Categoria.restaurante_id.in_(restaurantes_ids)).all()
+    # Realizar un join entre Categoria y Restaurante para filtrar por el usuario autenticado
+    categorias = (
+        db.query(CategoriaModel)
+        .join(Restaurante, CategoriaModel.restaurante_id == Restaurante.id_restaurante)
+        .filter(Restaurante.owner_id == current_user.id_users)
+        .all()
+    )
 
     if not categorias:
-        raise HTTPException(status_code=404, detail="No se encontraron categorías para los restaurantes del usuario")
+        raise HTTPException(status_code=404, detail="No se encontraron categorías para el usuario autenticado")
 
     return categorias
