@@ -7,7 +7,7 @@ from app.db.models import Orders, Payments, User, RoleEnum
 from app.oauth import get_current_user
 from app.db.database import get_db
 from typing import Optional
-from app.db.models import Restaurante
+#from app.db.models import Restaurante
 from app.schemas import Metric, AnalyticsResponse
 
 
@@ -23,14 +23,13 @@ def calculate_percentage_change(current: float, previous: float) -> float:
         return 0.0
     return ((current - previous) / previous) * 100
 
-
 @router.get("/dashboard", response_model=AnalyticsResponse)
 def get_dashboard_metrics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Obtiene métricas clave para el dashboard del restaurante.
+    Obtiene métricas clave para el dashboard del usuario autenticado.
     """
     # Definir períodos de tiempo
     today = datetime.now()
@@ -42,21 +41,6 @@ def get_dashboard_metrics(
     days_in_current_period = (today - start_of_current_week).days + 1  # +1 para incluir el día actual
     days_in_previous_period = 7  # Semana pasada siempre tiene 7 días
 
-    # Obtener el restaurante_id del usuario autenticado
-    restaurante = (
-        db.query(Restaurante)
-        .filter(
-            (Restaurante.owner_id == current_user.id_users) |  # Propietario
-            (Restaurante.id_restaurante == current_user.restaurante_id)  # Empleado
-        )
-        .first()
-    )
-
-    if not restaurante:
-        raise HTTPException(status_code=403, detail="No tienes restaurantes asociados para ver métricas")
-
-    restaurante_id = restaurante.id_restaurante
-
     # 1. Ventas totales (usando Payments para mayor precisión)
     total_sales_current = (
         db.query(func.sum(Payments.amount))
@@ -64,9 +48,7 @@ def get_dashboard_metrics(
         .filter(
             Orders.date_time >= start_of_current_week,
             Orders.date_time <= today,
-            Orders.user_id.in_(
-                db.query(User.id_users).filter(User.restaurante_id == restaurante_id)
-            )
+            Orders.user_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .scalar() or 0.0
     )
@@ -77,9 +59,7 @@ def get_dashboard_metrics(
         .filter(
             Orders.date_time >= start_of_previous_week,
             Orders.date_time <= end_of_previous_week,
-            Orders.user_id.in_(
-                db.query(User.id_users).filter(User.restaurante_id == restaurante_id)
-            )
+            Orders.user_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .scalar() or 0.0
     )
@@ -92,9 +72,7 @@ def get_dashboard_metrics(
         .filter(
             Orders.date_time >= start_of_current_week,
             Orders.date_time <= today,
-            Orders.user_id.in_(
-                db.query(User.id_users).filter(User.restaurante_id == restaurante_id)
-            )
+            Orders.user_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .scalar() or 0
     )
@@ -104,37 +82,35 @@ def get_dashboard_metrics(
         .filter(
             Orders.date_time >= start_of_previous_week,
             Orders.date_time <= end_of_previous_week,
-            Orders.user_id.in_(
-                db.query(User.id_users).filter(User.restaurante_id == restaurante_id)
-            )
+            Orders.user_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .scalar() or 0
     )
 
     total_orders_change = calculate_percentage_change(total_orders_current, total_orders_previous)
 
-    # 3. Clientes nuevos (usuarios con rol 'client' registrados esta semana)
+    # 3. Clientes nuevos (usuarios con rol 'client' que hicieron pedidos esta semana)
     new_customers_current = (
-        db.query(func.count(User.id_users))
+        db.query(func.count(Orders.user_id.distinct()))
         .filter(
-            User.rol == RoleEnum.client,
-            User.restaurante_id == restaurante_id,
-            User.id_users.in_(
-                db.query(Orders.user_id)
-                .filter(Orders.date_time >= start_of_current_week, Orders.date_time <= today)
+            Orders.date_time >= start_of_current_week,
+            Orders.date_time <= today,
+            Orders.user_id == current_user.id_users,  # Filtrar por el usuario autenticado
+            Orders.user_id.in_(
+                db.query(User.id_users).filter(User.rol == RoleEnum.client)
             )
         )
         .scalar() or 0
     )
 
     new_customers_previous = (
-        db.query(func.count(User.id_users))
+        db.query(func.count(Orders.user_id.distinct()))
         .filter(
-            User.rol == RoleEnum.client,
-            User.restaurante_id == restaurante_id,
-            User.id_users.in_(
-                db.query(Orders.user_id)
-                .filter(Orders.date_time >= start_of_previous_week, Orders.date_time <= end_of_previous_week)
+            Orders.date_time >= start_of_previous_week,
+            Orders.date_time <= end_of_previous_week,
+            Orders.user_id == current_user.id_users,  # Filtrar por el usuario autenticado
+            Orders.user_id.in_(
+                db.query(User.id_users).filter(User.rol == RoleEnum.client)
             )
         )
         .scalar() or 0

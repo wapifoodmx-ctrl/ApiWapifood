@@ -334,6 +334,7 @@ class Categoria(BaseModel):
     nombre_categoria:str
     descripcion_categoria:str
     status:StatusEnum | None = None
+    owner_id: int | None = None
     products: List[Products] | None = None  # Relación con Products
 
     class Config:

@@ -11,7 +11,7 @@ from pydantic import ValidationError
 import json
 import os
 import shutil
-from app.db.models import Restaurante, User
+from app.db.models import  User
 
 UPLOAD_DIR = "static/uploadsUser"
 
@@ -159,28 +159,28 @@ def obtener_user_con_info(user_id: int, db: Session):
         )
     return user  # La relación user_info se cargará automáticamente gracias a SQLAlchemy
 
-def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado_provincia: str, alcadia: str, owner_id: int):
-    # Verificar si el owner_id existe en la tabla users
-    owner = db.query(User).filter(User.id_users == owner_id).first()
-    if not owner:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+# def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado_provincia: str, alcadia: str, owner_id: int):
+#     # Verificar si el owner_id existe en la tabla users
+#     owner = db.query(User).filter(User.id_users == owner_id).first()
+#     if not owner:
+#         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    # Crear el restaurante
-    db_restaurante = Restaurante(
-        nombre_restaurante=nombre_restaurante,
-        ciudad=ciudad,
-        estado_provincia=estado_provincia,
-        alcadia=alcadia,
-        owner_id=owner_id
-    )
-    try:
-        db.add(db_restaurante)
-        db.commit()
-        db.refresh(db_restaurante)
-        return db_restaurante
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")
+#     # Crear el restaurante
+#     db_restaurante = Restaurante(
+#         nombre_restaurante=nombre_restaurante,
+#         ciudad=ciudad,
+#         estado_provincia=estado_provincia,
+#         alcadia=alcadia,
+#         owner_id=owner_id
+#     )
+#     try:
+#         db.add(db_restaurante)
+#         db.commit()
+#         db.refresh(db_restaurante)
+#         return db_restaurante
+#     except Exception as e:
+#         db.rollback()
+#         raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")
 
 def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Session):
     """

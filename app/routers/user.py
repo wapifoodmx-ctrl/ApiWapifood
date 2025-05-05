@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
-from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, Restaurante, RestauranteCreate, UserInfoCreate, UserInfoResponse
+from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse
 from typing import List
 from app.db.database import get_db
 from sqlalchemy.orm import Session

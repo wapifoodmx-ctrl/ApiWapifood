@@ -93,7 +93,7 @@ class User(Base):
     email = Column(String(50), unique=True, nullable = False)
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
-    restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
+    #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
     # Relaciones
     orders = relationship("Orders", back_populates="user")
     payments = relationship("Payments", back_populates="user")
