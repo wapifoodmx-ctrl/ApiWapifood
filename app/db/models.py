@@ -5,7 +5,8 @@ from sqlalchemy.sql.schema import ForeignKey
 from app.db.database import Base
 from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
 from sqlalchemy.ext.hybrid import hybrid_property
-
+from app.schemas import PlanType
+from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType
 
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
@@ -17,28 +18,30 @@ OrdersDetails → Products: Cada detalle de pedido se refiere a un producto (ord
 """
 # RoleEnum es una clase que hereda de Enum de Python y de str de Python
 
-class  RoleEnum(str, PyEnum): 
-    admin = "admin"
-    user = "user"
-    client = "client"
-# RoleOrders es una clase que hereda de Enum de Python y de str de Python
-class RoleOrders(str, PyEnum):
-    Libre = "Libre"
-    Ocupado = "Ocupado"
-# TablesEnum es una clase que hereda de Enum de Python y de str de Python
-class TablesEnum(str, PyEnum):
-    Libre = "Libre"
-    Ocupado = "Ocupado"
+# class  RoleEnum(str, PyEnum): 
+#     admin = "admin"
+#     user = "user"
+#     client = "client"
+# # RoleOrders es una clase que hereda de Enum de Python y de str de Python
+# class RoleOrders(str, PyEnum):
+#     Libre = "Libre"
+#     Ocupado = "Ocupado"
+# # TablesEnum es una clase que hereda de Enum de Python y de str de Python
+# class TablesEnum(str, PyEnum):
+#     Libre = "Libre"
+#     Ocupado = "Ocupado"
 
-class StatusEnum(str, PyEnum):
-    activo = "activo"
-    inactivo = "inactivo"
+# class StatusEnum(str, PyEnum):
+#     activo = "activo"
+#     inactivo = "inactivo"
 
 
-class PaymentMethodEnum(str, PyEnum):   
-    efectivo = "efectivo"
-    tarjeta = "tarjeta"
-    pasarela = "pasarela"
+# class PaymentMethodEnum(str, PyEnum):   
+#     efectivo = "efectivo"
+#     tarjeta = "tarjeta"
+#     pasarela = "pasarela"
+
+
 
 # User es una clase que hereda de Base de SQLAlchemy
 # Base es una clase que representa la base de datos
@@ -221,7 +224,9 @@ class Payments(Base):
     amount = Column(Decimal(10, 2))
     date = Column(DateTime)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Clave foránea a la tabla 'users'
-    stripe_payment_id = Column(String(255), nullable  = False) #    id de pago de Stripe
+    stripe_payment_intent_id = Column(String(255), nullable  = False) #    id de pago de Stripe
+    plan = Column(SQLAlchemyEnum(PlanType), nullable=True)  # Nuevo campo para el plan
+
 
     # Relaciones
     order = relationship("Orders", back_populates="payments")
