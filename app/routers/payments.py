@@ -1,22 +1,22 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request, Form, status
+from starlette.responses import RedirectResponse, JSONResponse
 from pydantic import BaseModel
-from enum import Enum
 import stripe
 from dotenv import load_dotenv
 import os
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.db.database import get_db
 from app.db.models import Payments, User
+from app.enums import PlanType, PaymentStatus
 from app.repository.auth import get_current_user
-from app.enums import PlanType
 from app.schemas import SubscriptionRequest
 
-# Cargar variables de entorno
+
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_API_KEY")
+stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# Verificar que la clave se cargó correctamente
 if not stripe.api_key:
     raise ValueError("No se encontró la clave de API de Stripe en las variables de entorno")
 
@@ -25,60 +25,293 @@ router = APIRouter(
     tags=["payments"]
 )
 
+YOUR_DOMAIN = "http://127.0.0.1:8000"
 
-# Diccionario con los precios de los planes (en dólares, convertiremos a centavos después)
 PLAN_PRICES = {
-    PlanType.BASICO: 29.99,
-    PlanType.PROFESIONAL: 49.99,
-    PlanType.EMPRESARIAL: 99.99
+    PlanType.BASICO: "price_1RMGJPAcLh3gfk7AeZCmoNOs" ,        #"prod_SGk7H4kqVBUvtP", # Reemplaza con el ID real del precio de Stripe
+    PlanType.PROFESIONAL: "price_1RMCjmAcLh3gfk7A4QwwMBLW",
+    PlanType.EMPRESARIAL: "price_1RMCkLAcLh3gfk7AkMlivuYU"
 }
 
-def get_plan_amount(plan: PlanType) -> int:
-    """Obtiene el monto en centavos basado en el plan seleccionado."""
-    amount_in_dollars = PLAN_PRICES.get(plan)
-    if not amount_in_dollars:
-        raise HTTPException(status_code=400, detail="Plan no válido")
-    return int(amount_in_dollars * 100)  # Convertir a centavos
+# Validar los price_id al iniciar la aplicación
+for plan, price_id in PLAN_PRICES.items():
+    if not price_id.startswith("price_"):
+        raise ValueError(f"El ID para el plan {plan} debe ser un price_id (comenzar con 'price_'), no un product_id: {price_id}")
+    try:
+        price = stripe.Price.retrieve(price_id)
+        if not price.recurring:
+            raise ValueError(f"El price_id para el plan {plan} no es un precio recurrente: {price_id}. Debe ser un precio recurrente para usar mode='subscription'.")
+    except stripe.error.InvalidRequestError as e:
+        raise ValueError(f"El price_id para el plan {plan} no es válido o no existe en tu cuenta de Stripe: {price_id}. Error: {str(e)}")
 
-@router.post("/create-payment-intent")
-async def create_payment(
+@router.post("/create-checkout-session")
+async def create_checkout_session(
     subscription_request: SubscriptionRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Crea un PaymentIntent con Stripe para el plan seleccionado, guarda el pago en la base de datos y devuelve el client_secret.
-    """
     try:
-        # Obtener el monto basado en el plan
-        amount = get_plan_amount(subscription_request.plan)
-        if amount <= 0:
-            raise HTTPException(status_code=400, detail="El monto debe ser mayor a cero")
+        price_id = PLAN_PRICES.get(subscription_request.plan)
+        if not price_id:
+            raise HTTPException(status_code=400, detail="Plan no válido")
 
-        # Crear el PaymentIntent en Stripe
-        intent = stripe.PaymentIntent.create(
-            amount=amount,
-            currency="usd",
-            automatic_payment_methods={"enabled": True},
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[
+                {"price": price_id, "quantity": 1},
+            ],
+            mode="subscription",
+            customer_email=current_user.email,
+            success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=YOUR_DOMAIN + "/payments/cancel",
         )
 
-        # Guardar el pago en la base de datos
+        # Log para inspeccionar la respuesta de Stripe
+        print(f"Checkout Session creada: ID={checkout_session.id}")
+        print(f"Customer: {checkout_session.customer}")
+        print(f"Subscription: {checkout_session.subscription}")
+        print(f"URL: {checkout_session.url}")
+
         payment = Payments(
-            order_id=subscription_request.order_id,
-            payment_method="pasarela",  # Usamos "pasarela" para Stripe
-            amount=amount / 100,  # Convertimos de centavos a dólares para la base de datos
+            payment_method="pasarela",
+            amount=0,
             date=datetime.utcnow(),
             user_id=current_user.id_users,
-            stripe_payment_intent_id=intent["id"],
-            plan=subscription_request.plan.value  # Guardamos el plan seleccionado (opcional, si tu modelo Payments lo soporta)
+            stripe_customer_id=checkout_session.customer,
+            subscription_id=checkout_session.subscription,
+            plan=subscription_request.plan.value,
+            status=PaymentStatus.PENDING,
         )
         db.add(payment)
         db.commit()
         db.refresh(payment)
 
-        return {"clientSecret": intent["client_secret"]}
+        # Devolver la URL en lugar de redirigir directamente
+        return JSONResponse(
+            status_code=200,
+            content={"checkout_url": checkout_session.url}
+        )
 
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+
+@router.post("/create-portal-session", status_code=status.HTTP_303_SEE_OTHER)
+async def create_portal_session(
+    session_id: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        checkout_session = stripe.checkout.Session.retrieve(session_id)
+        portal_session = stripe.billing_portal.Session.create(
+            customer=checkout_session.customer,
+            return_url=YOUR_DOMAIN,
+        )
+        return RedirectResponse(url=portal_session.url, status_code=303)
+
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+
+@router.post("/webhook", status_code=status.HTTP_200_OK)
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, stripe_webhook_secret)
+        print(f"Evento recibido: {event['type']} - ID: {event['id']}")
+    except ValueError as e:
+        print(f"Error en el payload: {str(e)}")
+        raise HTTPException(status_code=400, detail="Carga inválida")
+    except stripe.error.SignatureVerificationError as e:
+        print(f"Error en la firma: {str(e)}")
+        raise HTTPException(status_code=400, detail="Firma inválida")
+
+    try:
+        if event["type"] == "checkout.session.completed":
+            checkout_session = event["data"]["object"]
+            subscription_id = checkout_session.get("subscription")
+            print(f"Procesando checkout.session.completed - Subscription ID: {subscription_id}")
+
+            if not subscription_id:
+                print("No se encontró subscription_id en el evento")
+                return {"status": "ignored", "message": "No subscription_id in event"}
+
+            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+            if not payment:
+                # Buscar por customer_id si subscription_id no está disponible
+                payment = db.query(Payments).filter(
+                    Payments.stripe_customer_id == checkout_session.customer,
+                    Payments.status == PaymentStatus.PENDING
+                ).first()
+
+            if not payment:
+                print(f"No se encontró un pago con subscription_id: {subscription_id} o customer_id: {checkout_session.customer}")
+                return {"status": "ignored", "message": "Payment not found"}
+
+            # Actualizar subscription_id y customer_id si no estaban disponibles inicialmente
+            payment.subscription_id = subscription_id or payment.subscription_id
+            payment.stripe_customer_id = checkout_session.customer or payment.stripe_customer_id
+
+            # Obtener el monto de la suscripción desde Stripe
+            subscription = stripe.Subscription.retrieve(subscription_id)
+            amount = subscription.plan.amount / 100  # Convertir de centavos a dólares
+
+            payment.status = PaymentStatus.COMPLETED
+            payment.amount = amount
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.id_payments} - Estado: {payment.status} - Monto: {payment.amount}")
+
+        elif event["type"] == "customer.subscription.deleted":
+            subscription = event["data"]["object"]
+            subscription_id = subscription.get("id")
+            print(f"Procesando customer.subscription.deleted - Subscription ID: {subscription_id}")
+
+            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+            if not payment:
+                print(f"No se encontró un pago con subscription_id: {subscription_id}")
+                return {"status": "ignored", "message": "Payment not found"}
+
+            payment.status = PaymentStatus.FAILED
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.id_payments} - Estado: {payment.status}")
+
+        elif event["type"] == "payment_intent.succeeded":
+            payment_intent = event["data"]["object"]
+            subscription_id = payment_intent.get("metadata", {}).get("subscription_id")
+            if not subscription_id:
+                # Intentar obtener el subscription_id desde los cargos asociados
+                if payment_intent.get("charges", {}).get("data"):
+                    charge = payment_intent["charges"]["data"][0]
+                    invoice_id = charge.get("invoice")
+                    if invoice_id:
+                        invoice = stripe.Invoice.retrieve(invoice_id)
+                        subscription_id = invoice.get("subscription")
+
+            if not subscription_id:
+                print("No se encontró subscription_id en el payment_intent")
+                return {"status": "ignored", "message": "No subscription_id in payment_intent"}
+
+            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+            if not payment:
+                print(f"No se encontró un pago con subscription_id: {subscription_id}")
+                return {"status": "ignored", "message": "Payment not found"}
+
+            payment.stripe_payment_intent_id = payment_intent["id"]
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.id_payments} - Stripe Payment Intent ID: {payment.stripe_payment_intent_id}")
+
+        else:
+            print(f"Evento no manejado: {event['type']}")
+            return {"status": "ignored", "message": f"Event type {event['type']} not handled"}
+
+        return {"status": "success"}
+
+    except Exception as e:
+        print(f"Error al procesar el evento: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
+
+@router.get("/success", status_code=status.HTTP_200_OK)
+async def payment_success(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session_id = request.query_params.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Falta el ID de la sesión")
+
+    # Obtener la sesión de checkout para buscar el customer_id y subscription_id
+    checkout_session = stripe.checkout.Session.retrieve(session_id)
+    print(f"Procesando /success - Session ID: {session_id}, Customer: {checkout_session.customer}, Subscription: {checkout_session.subscription}")
+
+    # Buscar el pago usando subscription_id o customer_id
+    payment = db.query(Payments).filter(Payments.subscription_id == checkout_session.subscription).first()
+    if not payment and checkout_session.customer:
+        payment = db.query(Payments).filter(
+            Payments.stripe_customer_id == checkout_session.customer,
+            Payments.user_id == current_user.id_users,
+            Payments.status == PaymentStatus.PENDING
+        ).first()
+
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+    # Actualizar subscription_id si no estaba disponible
+    if checkout_session.subscription and not payment.subscription_id:
+        payment.subscription_id = checkout_session.subscription
+        db.commit()
+        db.refresh(payment)
+
+    # Actualizar el estado si no está completado
+    if payment.status != PaymentStatus.COMPLETED:
+        payment.status = PaymentStatus.COMPLETED if checkout_session.payment_status == "paid" else PaymentStatus.FAILED
+        db.commit()
+        db.refresh(payment)
+
+    return {"message": "¡Suscripción creada con éxito!", "status": payment.status}
+
+
+@router.get("/cancel", status_code=status.HTTP_200_OK)
+async def payment_cancel():
+    return {"message": "Suscripción cancelada."}
+
+@router.get("/check-payment/{email}", status_code=status.HTTP_200_OK)
+async def check_payment(email: str):
+    try:
+        customers = stripe.Customer.search(query=f"email:'{email}'")
+        if not customers.data:
+            return {"message": "No se encontró un cliente con ese correo", "has_paid": False}
+
+        customer_id = customers.data[0].id
+        thirty_days_ago = int((datetime.utcnow() - timedelta(days=30)).timestamp())
+
+        subscriptions = stripe.Subscription.list(
+            customer=customer_id,
+            created={"gte": thirty_days_ago},
+            status="all"
+        )
+        if subscriptions.data:
+            for subscription in subscriptions.data:
+                if subscription.status in ["active", "trialing"]:
+                    return {
+                        "message": f"Cliente tiene una suscripción activa (ID: {subscription.id})",
+                        "has_paid": True,
+                        "subscription_id": subscription.id,
+                        "status": subscription.status
+                    }
+                elif subscription.status == "canceled" and subscription.created >= thirty_days_ago:
+                    invoices = stripe.Invoice.list(
+                        subscription=subscription.id,
+                        customer=customer_id,
+                        created={"gte": thirty_days_ago}
+                    )
+                    for invoice in invoices.data:
+                        if invoice.status == "paid":
+                            return {
+                                "message": f"Cliente realizó un pago relacionado con una suscripción cancelada (Invoice ID: {invoice.id})",
+                                "has_paid": True,
+                                "invoice_id": invoice.id
+                            }
+
+        payment_intents = stripe.PaymentIntent.list(
+            customer=customer_id,
+            created={"gte": thirty_days_ago}
+        )
+        if payment_intents.data:
+            for intent in payment_intents.data:
+                if intent.status == "succeeded":
+                    return {
+                        "message": f"Cliente realizó un pago único exitoso (PaymentIntent ID: {intent.id})",
+                        "has_paid": True,
+                        "payment_intent_id": intent.id
+                    }
+
+        return {"message": "No se encontraron pagos o suscripciones activas en los últimos 30 días", "has_paid": False}
+
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")

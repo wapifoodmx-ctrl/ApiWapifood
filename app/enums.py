@@ -47,3 +47,7 @@ class StatusEnum(str, Enum):
     inactivo = "inactivo"
 
 
+class PaymentStatus(str, Enum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"

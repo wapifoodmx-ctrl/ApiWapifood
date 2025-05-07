@@ -6,7 +6,7 @@ from app.db.database import Base
 from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
 from sqlalchemy.ext.hybrid import hybrid_property
 from app.schemas import PlanType
-from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType
+from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus
 
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
@@ -224,8 +224,11 @@ class Payments(Base):
     amount = Column(Decimal(10, 2))
     date = Column(DateTime)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Clave foránea a la tabla 'users'
-    stripe_payment_intent_id = Column(String(255), nullable  = False) #    id de pago de Stripe
-    plan = Column(SQLAlchemyEnum(PlanType), nullable=True)  # Nuevo campo para el plan
+    stripe_payment_intent_id = Column(String(255), nullable  = True) #    id de pago de Stripe
+    stripe_customer_id = Column(String(255), nullable=True)  # Nuevo campo para el cliente de Stripe
+    subscription_id = Column(String(255), nullable=True)  # Nuevo campo para el ID de la suscripción
+    plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
+    status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
 
 
     # Relaciones

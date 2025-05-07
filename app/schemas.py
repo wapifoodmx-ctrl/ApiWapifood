@@ -458,6 +458,20 @@ class Item(BaseModel):
     quantity: int
     price: int
 
+class PaymentResponse(BaseModel):
+    id_payments: int | None = None
+    user_id: int 
+    amount: Decimal 
+    date: datetime
+    status: str
+    plan: Optional[str] = None
+    stripe_payment_intent_id: Optional[str] = None
+    stripe_customer_id: Optional[str] = None
+    subscription_id: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
 class PaymentRequest(BaseModel):
     items: List[Item]
     order_id: int  # Agregamos order_id para asociar el pago a un pedido
@@ -465,4 +479,4 @@ class PaymentRequest(BaseModel):
 # Esquema para la solicitud de pago
 class SubscriptionRequest(BaseModel):
     plan: PlanType
-    order_id: str
+    #order_id: str
