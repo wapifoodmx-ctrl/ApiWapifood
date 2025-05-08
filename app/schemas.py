@@ -468,6 +468,7 @@ class PaymentResponse(BaseModel):
     stripe_payment_intent_id: Optional[str] = None
     stripe_customer_id: Optional[str] = None
     subscription_id: Optional[str] = None
+    checkout_session_id: str | None
 
     class Config:
         orm_mode = True

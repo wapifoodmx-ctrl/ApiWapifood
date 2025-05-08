@@ -229,6 +229,7 @@ class Payments(Base):
     subscription_id = Column(String(255), nullable=True)  # Nuevo campo para el ID de la suscripción
     plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
+    checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
 
 
     # Relaciones
