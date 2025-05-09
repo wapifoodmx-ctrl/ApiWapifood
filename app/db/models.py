@@ -161,7 +161,7 @@ class Orders(Base):
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
-    payments = relationship("Payments", back_populates="order")
+    #payments = relationship("Payments", back_populates="order")
     # Relación con la tabla `Tables`
     table = relationship("Tables", back_populates="orders")
     order_details = relationship("OrdersDetails", back_populates="order")
@@ -219,10 +219,11 @@ class OrdersDetails(Base):
 class Payments(Base):
     __tablename__ = "payments"
     id_payments = Column(Integer, primary_key=True, autoincrement=True)
-    order_id = Column(Integer, ForeignKey("orders.id_orders"))
+    #order_id = Column(Integer, ForeignKey("orders.id_orders"))
     payment_method = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False)
     amount = Column(Decimal(10, 2))
     date = Column(DateTime)
+    subscription_end_date = Column(DateTime, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Clave foránea a la tabla 'users'
     stripe_payment_intent_id = Column(String(255), nullable  = True) #    id de pago de Stripe
     stripe_customer_id = Column(String(255), nullable=True)  # Nuevo campo para el cliente de Stripe
@@ -230,10 +231,10 @@ class Payments(Base):
     plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
     checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
-
+    email = Column(String(255), nullable=True)
 
     # Relaciones
-    order = relationship("Orders", back_populates="payments")
+    #order = relationship("Orders", back_populates="payments")
     user = relationship("User", back_populates="payments")
 
 class Categoria(Base):
