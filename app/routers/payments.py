@@ -63,8 +63,10 @@ async def create_checkout_session(
             ],
             mode="subscription",
             customer=customer.id,
-            success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url=YOUR_DOMAIN + "/payments/cancel",
+            success_url="http://192.168.1.71:3000/success/?session_id={CHECKOUT_SESSION_ID}",
+            #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="http://192.168.1.71:3000/payments",
+            #cancel_url=YOUR_DOMAIN + "/payments/cancel",
             metadata={"user_id": str(current_user.id_users)},
         )
 
@@ -131,7 +133,6 @@ async def create_portal_session(
 
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -156,7 +157,6 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             if not payment:
                 return {"status": "ignored", "message": "Payment not found"}
 
-            # Obtener el usuario para recuperar el email
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if not user:
                 return {"status": "ignored", "message": "User not found"}
@@ -165,12 +165,93 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             payment.stripe_customer_id = checkout_session.customer or payment.stripe_customer_id
 
             subscription = stripe.Subscription.retrieve(subscription_id)
-            amount = subscription.plan.amount / 100
-            payment.status = PaymentStatus.COMPLETED
+            print(f"Subscription retrieved: {subscription}")
+            print(f"Subscription Current Period End: {subscription.current_period_end}")
+
+            if subscription.plan and subscription.plan.amount:
+                amount = subscription.plan.amount / 100
+            else:
+                price_id = subscription.plan.id if subscription.plan else None
+                if price_id:
+                    price = stripe.Price.retrieve(price_id)
+                    amount = price.unit_amount / 100
+                else:
+                    amount = 0
             payment.amount = amount
-            payment.email = user.email  # Actualizar el email
+            print(f"Amount set to: {amount}")
+
+            if subscription.current_period_end:
+                subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
+                print(f"Subscription end date from current_period_end: {subscription_end_date}")
+            else:
+                if subscription.current_period_start and subscription.plan and subscription.plan.interval:
+                    start_date = datetime.utcfromtimestamp(subscription.current_period_start)
+                    if subscription.plan.interval == "month":
+                        subscription_end_date = start_date + timedelta(days=30)
+                    elif subscription.plan.interval == "year":
+                        subscription_end_date = start_date + timedelta(days=365)
+                    else:
+                        subscription_end_date = start_date + timedelta(days=30)
+                    print(f"Subscription end date calculated from start: {subscription_end_date}")
+                else:
+                    subscription_end_date = datetime.utcnow() + timedelta(days=30)
+                    print(f"Subscription end date calculated manually: {subscription_end_date}")
+            payment.subscription_end_date = subscription_end_date
+            print(f"Subscription end date saved: {payment.subscription_end_date}")
+
+            payment.status = PaymentStatus.COMPLETED
+            payment.email = user.email
             db.commit()
             db.refresh(payment)
+            print(f"Payment updated in DB: {payment.__dict__}")
+
+        elif event["type"] == "customer.subscription.updated":
+            subscription = event["data"]["object"]
+            subscription_id = subscription.get("id")
+
+            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+            if not payment:
+                return {"status": "ignored", "message": "Payment not found"}
+
+            user = db.query(User).filter(User.id_users == payment.user_id).first()
+            if not user:
+                return {"status": "ignored", "message": "User not found"}
+
+            # Actualizar el monto si cambió el plan
+            if subscription.plan and subscription.plan.amount:
+                amount = subscription.plan.amount / 100
+                payment.amount = amount
+                print(f"Updated amount to: {amount}")
+
+            # Actualizar la fecha de finalización
+            if subscription.current_period_end:
+                subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
+                payment.subscription_end_date = subscription_end_date
+                print(f"Updated subscription end date to: {subscription_end_date}")
+            else:
+                if subscription.current_period_start and subscription.plan and subscription.plan.interval:
+                    start_date = datetime.utcfromtimestamp(subscription.current_period_start)
+                    if subscription.plan.interval == "month":
+                        subscription_end_date = start_date + timedelta(days=30)
+                    elif subscription.plan.interval == "year":
+                        subscription_end_date = start_date + timedelta(days=365)
+                    else:
+                        subscription_end_date = start_date + timedelta(days=30)
+                    payment.subscription_end_date = subscription_end_date
+                    print(f"Calculated subscription end date: {subscription_end_date}")
+                else:
+                    payment.subscription_end_date = datetime.utcnow() + timedelta(days=30)
+                    print(f"Manually set subscription end date: {payment.subscription_end_date}")
+
+            # Actualizar el estado si es necesario (por ejemplo, si se reactiva)
+            if subscription.status == "active" or subscription.status == "trialing":
+                payment.status = PaymentStatus.COMPLETED
+            elif subscription.status == "canceled":
+                payment.status = PaymentStatus.FAILED
+            payment.email = user.email
+            db.commit()
+            db.refresh(payment)
+            print(f"Payment updated in DB: {payment.__dict__}")
 
         elif event["type"] == "customer.subscription.deleted":
             subscription = event["data"]["object"]
@@ -180,14 +261,15 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             if not payment:
                 return {"status": "ignored", "message": "Payment not found"}
 
-            # Obtener el usuario para recuperar el email
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if user:
-                payment.email = user.email  # Actualizar el email
+                payment.email = user.email
 
             payment.status = PaymentStatus.FAILED
+            payment.subscription_end_date = None  # Limpia la fecha de finalización
             db.commit()
             db.refresh(payment)
+            print(f"Payment canceled in DB: {payment.__dict__}")
 
         elif event["type"] == "payment_intent.succeeded":
             payment_intent = event["data"]["object"]
@@ -207,10 +289,9 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             if not payment:
                 return {"status": "ignored", "message": "Payment not found"}
 
-            # Obtener el usuario para recuperar el email
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if user:
-                payment.email = user.email  # Actualizar el email
+                payment.email = user.email
 
             payment.stripe_payment_intent_id = payment_intent["id"]
             db.commit()
@@ -223,8 +304,6 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
-    
-
     
 @router.get("/success", status_code=status.HTTP_200_OK)
 async def payment_success(request: Request, db: Session = Depends(get_db)):
