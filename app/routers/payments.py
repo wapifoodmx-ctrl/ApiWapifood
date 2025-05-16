@@ -65,7 +65,7 @@ async def create_checkout_session(
             customer=customer.id,
             success_url="http://192.168.1.71:3000/success/?session_id={CHECKOUT_SESSION_ID}",
             #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="http://192.168.1.71:3000/payments",
+            cancel_url="http://192.168.1.71:3000/error",
             #cancel_url=YOUR_DOMAIN + "/payments/cancel",
             metadata={"user_id": str(current_user.id_users)},
         )
@@ -362,64 +362,59 @@ async def payment_success(request: Request, db: Session = Depends(get_db)):
 async def payment_cancel():
     return {"message": "Suscripción cancelada."}
 
-@router.get("/check-payment/{email}", status_code=status.HTTP_200_OK)
-async def check_payment(email: str):
-    try:
-        customers = stripe.Customer.search(query=f"email:'{email}'")
-        if not customers.data:
-            return {"message": "No se encontró un cliente con ese correo", "has_paid": False}
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
 
-        customer_id = customers.data[0].id
-        thirty_days_ago = int((datetime.utcnow() - timedelta(days=30)).timestamp())
 
-        subscriptions = stripe.Subscription.list(
-            customer=customer_id,
-            created={"gte": thirty_days_ago},
-            status="all"
-        )
-        if subscriptions.data:
-            for subscription in subscriptions.data:
-                if subscription.status in ["active", "trialing"]:
-                    return {
-                        "message": f"Cliente tiene una suscripción activa (ID: {subscription.id})",
-                        "has_paid": True,
-                        "subscription_id": subscription.id,
-                        "status": subscription.status
-                    }
-                elif subscription.status == "canceled" and subscription.created >= thirty_days_ago:
-                    invoices = stripe.Invoice.list(
-                        subscription=subscription.id,
-                        customer=customer_id,
-                        created={"gte": thirty_days_ago}
-                    )
-                    for invoice in invoices.data:
-                        if invoice.status == "paid":
-                            return {
-                                "message": f"Cliente realizó un pago relacionado con una suscripción cancelada (Invoice ID: {invoice.id})",
-                                "has_paid": True,
-                                "invoice_id": invoice.id
-                            }
+@router.get("/check-payment/{email}")
+async def check_payment(email: str, db: Session = Depends(get_db)):
+    # Decodificar el correo
+    decoded_email = email.replace("%40", "@")
+    print(f"Buscando pagos para el correo: {decoded_email}")
 
-        payment_intents = stripe.PaymentIntent.list(
-            customer=customer_id,
-            created={"gte": thirty_days_ago}
-        )
-        if payment_intents.data:
-            for intent in payment_intents.data:
-                if intent.status == "succeeded":
-                    return {
-                        "message": f"Cliente realizó un pago único exitoso (PaymentIntent ID: {intent.id})",
-                        "has_paid": True,
-                        "payment_intent_id": intent.id
-                    }
+    # Definir el límite de 30 días
+    cutoff_date = datetime.utcnow() - timedelta(days=30)
+    print(f"Fecha límite para los pagos: {cutoff_date}")
 
-        return {"message": "No se encontraron pagos o suscripciones activas en los últimos 30 días", "has_paid": False}
+    # Fecha actual para verificar suscripciones activas
+    current_time = datetime.utcnow()
+    print(f"Fecha actual: {current_time}")
 
-    except stripe.error.StripeError as e:
-        raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
-    
+    # Buscar la última suscripción activa
+    payment = db.query(Payments).filter(
+        Payments.email == decoded_email,
+        Payments.date >= cutoff_date,
+        Payments.status == PaymentStatus.COMPLETED,
+        Payments.subscription_end_date != None,
+        Payments.subscription_end_date > current_time
+    ).order_by(Payments.date.desc()).first()
+
+    if not payment:
+        print("No se encontraron suscripciones activas")
+        return {
+            "message": "No se encontraron suscripciones activas en los últimos 30 días",
+            "has_active_subscription": False
+        }
+
+    print(f"Suscripción activa encontrada: ID {payment.id_payments}, Fecha: {payment.date}, Plan: {payment.plan}")
+
+    return {
+        "message": "Última suscripción activa encontrada",
+        "has_active_subscription": True,
+        "payment": {
+            "id": payment.id_payments,
+            "amount": payment.amount,
+            "date": payment.date.isoformat(),
+            "plan": payment.plan,
+            "status": payment.status,
+            "subscription_end_date": payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
+        }
+    }
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+
+
 
 @router.get("/success/{session_id}", status_code=status.HTTP_200_OK)
 async def payment_success(
@@ -496,6 +491,9 @@ async def payment_success(
         "user_email": user.email,
         "subscription_end_date": subscription_end_date
     }
+
+#--------------------------------------------------------------------
+#--------------------------------------------------------------------
 
 # Nuevo endpoint para obtener los pagos del usuario autenticado
 @router.get("/me", status_code=status.HTTP_200_OK, response_model=List[dict])
