@@ -28,7 +28,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #     return Orders
 
 
-@router.post("/",response_model=OrdersSchema,status_code=status.HTTP_201_CREATED,
+@router.post("/", response_model=OrdersSchema, status_code=status.HTTP_201_CREATED,
     description="Crea una nueva orden y su detalle para un producto existente."
 )
 async def crear_orden(
@@ -90,7 +90,6 @@ def obtenemos_orders_details(
         db.query(OrdersModel)
         .filter(OrdersModel.user_id == current_user.id_users)
         .options(joinedload(OrdersModel.order_details))
-        .options(joinedload(OrdersModel.payments))  # Asumiendo que hay una relación definida
         .all()
     )
     
@@ -100,27 +99,22 @@ def obtenemos_orders_details(
     # Convertir los objetos OrdersModel a diccionarios
     orders_dicts = []
     for order in orders:
-        # Buscar el método de pago en la tabla Payments
-        payment = db.query(PaymentsModel).filter(PaymentsModel.order_id == order.id_orders).first()
-        payment_method = payment.payment_method if payment else "No especificado"
-
         order_dict = {
             "id_orders": order.id_orders,
             "state": order.state,
             "date_time": order.date_time,
-            "total": order.total,  # Mantener como Decimal
+            "total": order.total,
             "orderscol": order.orderscol,
             "user_id": order.user_id,
             "product_name": order.product_name,
-            "payment_method": payment_method,  # Método de pago
-            "details": [  # Mapear los detalles manualmente
+            "details": [
                 {
                     "id_orders_details": detail.id_orders_details,
                     "order_id": detail.order_id,
                     "product_id": detail.product_id,
                     "quantity": detail.quantity,
-                    "unit_price": detail.unit_price,  # Mantener como Decimal
-                    "subtotal": detail.subtotal  # Mantener como Decimal
+                    "unit_price": detail.unit_price,
+                    "subtotal": detail.subtotal
                 }
                 for detail in order.order_details
             ]
@@ -128,26 +122,6 @@ def obtenemos_orders_details(
         orders_dicts.append(order_dict)
 
     return [OrdersResponse.model_validate(order_dict) for order_dict in orders_dicts]
-
-
-# @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
-# def obtenemos_orders_details(
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     """Obtiene todas las órdenes del usuario autenticado, incluyendo sus detalles."""
-#     try:
-#         # Obtener todas las órdenes del usuario autenticado
-#         orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).all()
-        
-#         if not orders:
-#             raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario")
-
-#         # Devolver las órdenes con sus detalles
-#         return [OrdersResponse.from_orm(order) for order in orders]
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=f"Error obteniendo las órdenes: {str(e)}")
-
 
 @router.get("/summary", response_model=dict, status_code=status.HTTP_200_OK)
 def get_order_summary(
@@ -179,3 +153,24 @@ def get_order_summary(
         "En Proceso": in_process,
         "Completados": completed
     }
+
+
+# @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
+# def obtenemos_orders_details(
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     """Obtiene todas las órdenes del usuario autenticado, incluyendo sus detalles."""
+#     try:
+#         # Obtener todas las órdenes del usuario autenticado
+#         orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).all()
+        
+#         if not orders:
+#             raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario")
+
+#         # Devolver las órdenes con sus detalles
+#         return [OrdersResponse.from_orm(order) for order in orders]
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=f"Error obteniendo las órdenes: {str(e)}")
+
+

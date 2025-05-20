@@ -366,11 +366,14 @@ async def payment_cancel():
 #-----------------------------------------------------------------
 
 
-@router.get("/check-payment/{email}")
-async def check_payment(email: str, db: Session = Depends(get_db)):
-    # Decodificar el correo
-    decoded_email = email.replace("%40", "@")
-    print(f"Buscando pagos para el correo: {decoded_email}")
+@router.get("/check-payment")
+async def check_payment(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Usar el correo del usuario autenticado
+    user_email = current_user.email
+    print(f"Buscando pagos para el correo: {user_email}")
 
     # Definir el límite de 30 días
     cutoff_date = datetime.utcnow() - timedelta(days=30)
@@ -382,7 +385,7 @@ async def check_payment(email: str, db: Session = Depends(get_db)):
 
     # Buscar la última suscripción activa
     payment = db.query(Payments).filter(
-        Payments.email == decoded_email,
+        Payments.email == user_email,
         Payments.date >= cutoff_date,
         Payments.status == PaymentStatus.COMPLETED,
         Payments.subscription_end_date != None,

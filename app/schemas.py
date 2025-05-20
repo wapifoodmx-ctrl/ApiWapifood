@@ -423,7 +423,7 @@ class OrdersResponse(BaseModel):
     date_time: datetime
     total: float
     product_name: str  # Asegúrate de incluir este campo
-    payment_method: str  # Nuevo campo
+    #payment_method: str  # Nuevo campo
     details: List[OrderDetailResponse]
 
     class Config:

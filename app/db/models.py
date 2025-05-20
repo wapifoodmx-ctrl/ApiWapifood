@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey, Float
 from sqlalchemy.types import DECIMAL as Decimal  # 🛠️ Corrección
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.schema import ForeignKey
@@ -109,6 +109,7 @@ class User(Base):
     #restaurante = relationship("Restaurante", back_populates="users", foreign_keys=[restaurante_id])
     # Relación con Restaurante como propietario (un usuario puede ser dueño de varios restaurantes)
     #restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
+    order_analytics = relationship("OrderAnalytics", back_populates="user")
 
 
     
@@ -165,6 +166,7 @@ class Orders(Base):
     # Relación con la tabla `Tables`
     table = relationship("Tables", back_populates="orders")
     order_details = relationship("OrdersDetails", back_populates="order")
+    
 
 class Tables(Base):
     __tablename__ = "tables"
@@ -251,5 +253,16 @@ class Categoria(Base):
     
 
 
+class OrderAnalytics(Base):
+    __tablename__ = "order_analytics"
 
+    id_analytics = Column(Integer, primary_key=True, autoincrement=True)
+    period_start = Column(DateTime, nullable=False)  # Fecha de inicio del período (mes o semana)
+    period_type = Column(String(10), nullable=False)  # "month" o "week"
+    total_orders = Column(Integer, nullable=False)  # Número total de órdenes
+    total_revenue = Column(Float,nullable=False)  # Suma del total de las órdenes
+    total_products_sold = Column(Integer, nullable=False)  # Cantidad total de productos vendidos
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Relación con el usuario
 
+    # Relación inversa
+    user = relationship("User", back_populates="order_analytics")
