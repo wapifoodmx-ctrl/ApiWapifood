@@ -410,7 +410,7 @@ class OrdersCreate(BaseModel):
 class OrderDetailResponse(BaseModel):
     product_id: int
     quantity: int
-    unit_price: float
+    unit_price: float = 0.0
     subtotal: float
 
     class Config:
@@ -422,7 +422,7 @@ class OrdersResponse(BaseModel):
     state: str
     date_time: datetime
     total: float
-    product_name: str  # Asegúrate de incluir este campo
+    product_name: str = "Sin dato" # Asegúrate de incluir este campo
     #payment_method: str  # Nuevo campo
     details: List[OrderDetailResponse]
 

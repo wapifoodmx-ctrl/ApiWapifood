@@ -35,68 +35,55 @@ def get_dashboard_metrics(
 ):
     """
     Obtiene métricas clave para el dashboard del usuario autenticado usando Orders.
+    Muestra métricas acumulativas desde la primera orden hasta la fecha actual.
     """
-    # Definir períodos de tiempo
-    today = datetime.now()
-    start_of_current_week = today - timedelta(days=today.weekday(), hours=today.hour, minutes=today.minute, seconds=today.second, microseconds=today.microsecond)
-    start_of_previous_week = start_of_current_week - timedelta(days=7)
-    end_of_previous_week = start_of_current_week - timedelta(seconds=1)
+    # Obtener la fecha de la primera orden del usuario
+    first_order = db.query(Orders.date_time).filter(
+        Orders.user_id == current_user.id_users
+    ).order_by(Orders.date_time.asc()).first()
 
-    # Calcular el número de días en cada período
-    days_in_current_period = (today - start_of_current_week).days + 1  # +1 para incluir el día actual
-    days_in_previous_period = 7  # Semana pasada siempre tiene 7 días
+    if not first_order:
+        return AnalyticsResponse(
+            total_sales=Metric(value=0.0, change=0.0, change_label=""),
+            total_orders=Metric(value=0, change=0.0, change_label=""),
+            new_customers=Metric(value=0, change=0.0, change_label=""),
+            average_daily_sales=Metric(value=0.0, change=0.0, change_label="")
+        )
+
+    start_date = first_order[0]
+    today = datetime.now()
+
+    # Calcular el número de días en el período total
+    days_in_period = (today - start_date).days + 1  # +1 para incluir el día actual
 
     # 1. Ventas totales (usando Orders.total)
-    total_sales_current = (
+    total_sales = (
         db.query(func.sum(Orders.total))
         .filter(
-            Orders.date_time >= start_of_current_week,
+            Orders.date_time >= start_date,
             Orders.date_time <= today,
             Orders.user_id == current_user.id_users
         )
         .scalar() or 0.0
     )
-
-    total_sales_previous = (
-        db.query(func.sum(Orders.total))
-        .filter(
-            Orders.date_time >= start_of_previous_week,
-            Orders.date_time <= end_of_previous_week,
-            Orders.user_id == current_user.id_users
-        )
-        .scalar() or 0.0
-    )
-
-    total_sales_change = calculate_percentage_change(total_sales_current, total_sales_previous)
 
     # 2. Pedidos totales (número de pedidos)
-    total_orders_current = (
+    total_orders = (
         db.query(func.count(Orders.id_orders))
         .filter(
-            Orders.date_time >= start_of_current_week,
+            Orders.date_time >= start_date,
             Orders.date_time <= today,
             Orders.user_id == current_user.id_users
         )
         .scalar() or 0
     )
 
-    total_orders_previous = (
-        db.query(func.count(Orders.id_orders))
-        .filter(
-            Orders.date_time >= start_of_previous_week,
-            Orders.date_time <= end_of_previous_week,
-            Orders.user_id == current_user.id_users
-        )
-        .scalar() or 0
-    )
-
-    total_orders_change = calculate_percentage_change(total_orders_current, total_orders_previous)
-
-    # 3. Clientes nuevos (usuarios con rol 'client' que hicieron pedidos esta semana)
-    new_customers_current = (
+    # 3. Clientes nuevos (ajustado para contar usuarios distintos con rol 'client')
+    # Nota: Este cálculo podría necesitar ajustes según la lógica de tu aplicación
+    new_customers = (
         db.query(func.count(Orders.user_id.distinct()))
         .filter(
-            Orders.date_time >= start_of_current_week,
+            Orders.date_time >= start_date,
             Orders.date_time <= today,
             Orders.user_id == current_user.id_users,
             Orders.user_id.in_(
@@ -105,48 +92,32 @@ def get_dashboard_metrics(
         )
         .scalar() or 0
     )
-
-    new_customers_previous = (
-        db.query(func.count(Orders.user_id.distinct()))
-        .filter(
-            Orders.date_time >= start_of_previous_week,
-            Orders.date_time <= end_of_previous_week,
-            Orders.user_id == current_user.id_users,
-            Orders.user_id.in_(
-                db.query(User.id_users).filter(User.rol == RoleEnum.client)
-            )
-        )
-        .scalar() or 0
-    )
-
-    new_customers_change = calculate_percentage_change(new_customers_current, new_customers_previous)
 
     # 4. Ventas promedio por día (ventas totales / número de días)
-    average_daily_sales_current = (total_sales_current / days_in_current_period) if days_in_current_period > 0 else 0.0
-    average_daily_sales_previous = (total_sales_previous / days_in_previous_period) if days_in_previous_period > 0 else 0.0
-    average_daily_sales_change = calculate_percentage_change(average_daily_sales_current, average_daily_sales_previous)
+    average_daily_sales = (total_sales / days_in_period) if days_in_period > 0 else 0.0
 
     # Construir la respuesta
+    # No calculamos "cambio" porque ahora mostramos métricas acumulativas
     return AnalyticsResponse(
         total_sales=Metric(
-            value=float(total_sales_current),
-            change=total_sales_change,
-            change_label="vs la semana pasada"
+            value=float(total_sales),
+            change=0.0,
+            change_label=""
         ),
         total_orders=Metric(
-            value=float(total_orders_current),
-            change=total_orders_change,
-            change_label="vs la semana pasada"
+            value=float(total_orders),
+            change=0.0,
+            change_label=""
         ),
         new_customers=Metric(
-            value=float(new_customers_current),
-            change=new_customers_change,
-            change_label="vs la semana pasada"
+            value=float(new_customers),
+            change=0.0,
+            change_label=""
         ),
         average_daily_sales=Metric(
-            value=float(average_daily_sales_current),
-            change=average_daily_sales_change,
-            change_label="vs la semana pasada"
+            value=float(average_daily_sales),
+            change=0.0,
+            change_label=""
         )
     )
 
@@ -157,8 +128,7 @@ def get_dashboard_metrics(
 @router.post("/generate-analytics")
 async def generate_analytics(
     period_type: str,  # "month" o "week"
-    start_date: str,   # Formato: "YYYY-MM-DD", por ejemplo, "2025-01-01"
-    end_date: str,     # Formato: "YYYY-MM-DD", por ejemplo, "2025-05-20"
+    end_date: str = None,  # Formato: "YYYY-MM-DD", opcional
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -166,17 +136,34 @@ async def generate_analytics(
     if period_type not in ["month", "week"]:
         raise HTTPException(status_code=400, detail="period_type debe ser 'month' o 'week'")
 
-    # Parsear las fechas
-    try:
-        start = datetime.strptime(start_date, "%Y-%m-%d")
-        end = datetime.strptime(end_date, "%Y-%m-%d")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use YYYY-MM-DD")
+    # Obtener la fecha de la primera venta como start_date
+    first_sale = db.query(Orders.date_time).filter(
+        Orders.user_id == current_user.id_users
+    ).order_by(Orders.date_time.asc()).first()
 
-    if start >= end:
-        raise HTTPException(status_code=400, detail="start_date debe ser anterior a end_date")
+    if not first_sale:
+        raise HTTPException(status_code=404, detail="No se encontraron ventas para este usuario")
 
-    # Asegurarse de que las fechas sean UTC
+    start = first_sale[0]  # Extraer el valor de la tupla (date_time)
+
+    # Obtener la fecha de la última venta o usar end_date si se proporciona
+    last_sale = db.query(Orders.date_time).filter(
+        Orders.user_id == current_user.id_users
+    ).order_by(Orders.date_time.desc()).first()
+
+    if not last_sale:
+        raise HTTPException(status_code=404, detail="No se encontraron ventas para este usuario")
+
+    end = last_sale[0] if end_date is None else datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+
+    # Validar que end_date (si se proporciona) sea posterior a la primera venta
+    if end_date and start >= end:
+        raise HTTPException(
+            status_code=400,
+            detail=f"end_date ({end_date}) debe ser posterior a la fecha de la primera venta ({start.strftime('%Y-%m-%d %H:%M:%S')})"
+        )
+
+    # Asegurarse de que las fechas sean UTC (aunque aquí usamos sin zona horaria)
     start = start.replace(tzinfo=None)
     end = end.replace(tzinfo=None)
 
@@ -220,7 +207,7 @@ async def generate_analytics(
             period_start=current_date,
             period_type=period_type,
             total_orders=total_orders,
-            total_revenue=float(total_revenue),  # Convertir Decimal a float
+            total_revenue=float(total_revenue),
             total_products_sold=total_products_sold,
             user_id=current_user.id_users
         )
@@ -233,7 +220,7 @@ async def generate_analytics(
             current_date = current_date + timedelta(days=7)
 
     db.commit()
-    return {"message": f"Datos analíticos generados para {period_type} desde {start_date} hasta {end_date}"}
+    return {"message": f"Datos analíticos generados para {period_type} desde {start.strftime('%Y-%m-%d %H:%M:%S')} hasta {end.strftime('%Y-%m-%d %H:%M:%S')}"}
 
 
 #------------------------------------------------------------------

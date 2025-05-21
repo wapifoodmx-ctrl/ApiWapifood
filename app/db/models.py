@@ -7,6 +7,7 @@ from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
 from sqlalchemy.ext.hybrid import hybrid_property
 from app.schemas import PlanType
 from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus
+from datetime import datetime
 
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
@@ -96,6 +97,7 @@ class User(Base):
     email = Column(String(50), unique=True, nullable = False)
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Campo para la fecha de creación
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
     # Relaciones
     orders = relationship("Orders", back_populates="user")

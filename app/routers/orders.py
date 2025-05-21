@@ -89,7 +89,7 @@ def obtenemos_orders_details(
     orders = (
         db.query(OrdersModel)
         .filter(OrdersModel.user_id == current_user.id_users)
-        .options(joinedload(OrdersModel.order_details))
+        .options(joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product))
         .all()
     )
     
@@ -103,18 +103,18 @@ def obtenemos_orders_details(
             "id_orders": order.id_orders,
             "state": order.state,
             "date_time": order.date_time,
-            "total": order.total,
-            "orderscol": order.orderscol,
+            "total": order.total or 0.0,  # Valor por defecto si es None
+            "orderscol": order.orderscol or "Sin descripción",
             "user_id": order.user_id,
-            "product_name": order.product_name,
+            "product_name": order.product_name or "Sin nombre",  # Valor por defecto
             "details": [
                 {
                     "id_orders_details": detail.id_orders_details,
                     "order_id": detail.order_id,
                     "product_id": detail.product_id,
                     "quantity": detail.quantity,
-                    "unit_price": detail.unit_price,
-                    "subtotal": detail.subtotal
+                    "unit_price": detail.unit_price if detail.unit_price is not None else 0.0,  # Valor por defecto
+                    "subtotal": detail.subtotal if detail.subtotal is not None else 0.0  # Valor por defecto
                 }
                 for detail in order.order_details
             ]
@@ -122,6 +122,9 @@ def obtenemos_orders_details(
         orders_dicts.append(order_dict)
 
     return [OrdersResponse.model_validate(order_dict) for order_dict in orders_dicts]
+
+#------------------------------------------
+#------------------------------------------
 
 @router.get("/summary", response_model=dict, status_code=status.HTTP_200_OK)
 def get_order_summary(

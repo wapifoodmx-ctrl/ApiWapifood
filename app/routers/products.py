@@ -2,20 +2,21 @@ from fastapi import APIRouter, Depends, status, HTTPException, UploadFile, File,
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Annotated, Optional
+from sqlalchemy.sql import func
 from app.db.database import get_db
-from app.db.models import Image, User
+from app.db.models import Image, User, Products, OrdersDetails, Orders
 from app.schemas import ImageCreate, ImageResponse, TopProduct
 from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User, Image as ImageModel
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
-from app.schemas import ProductUpdateSchema
+from app.schemas import ProductUpdateSchema, TopProduct
 from app.db.models import Categoria
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 import uuid
 from app.repository import products as product_repo
-from app.repository.products import get_top_products
+
 
 
 router = APIRouter(
@@ -33,16 +34,48 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
-
 # Mover esta ruta ANTES de las rutas dinámicas con {product_id}
 @router.get("/top", status_code=status.HTTP_200_OK, response_model=List[TopProduct], description="Obtiene los productos más populares con su nombre, precio, unidades vendidas y subtotal.")
-def get_top_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_top_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> List[TopProduct]:
     # Obtener el user_id del usuario autenticado
     user_id = current_user.id_users
-    
-    # Pasar el user_id al repositorio
-    top_products = product_repo.get_top_products(db, user_id)
-    return top_products
+
+    # Calcular las unidades vendidas por producto para el usuario autenticado
+    top_products = (
+        db.query(
+            Products.name,
+            Products.price,
+            func.sum(OrdersDetails.quantity).label("units_sold"),
+            func.sum(OrdersDetails.subtotal).label("subtotal")
+        )
+        .join(OrdersDetails, Products.id_products == OrdersDetails.product_id)
+        .join(Orders, Orders.id_orders == OrdersDetails.order_id)
+        .filter(Orders.user_id == user_id)
+        .group_by(Products.id_products, Products.name, Products.price)
+        .order_by(func.sum(OrdersDetails.quantity).desc())  # Ordenar por unidades vendidas de mayor a menor
+        .limit(10)  # Limitar a los 10 más vendidos
+        .all()
+    )
+
+    # Construir la lista de TopProduct con posiciones
+    result = []
+    for position, (name, price, units_sold, subtotal) in enumerate(top_products, 1):
+        result.append(
+            TopProduct(
+                position=position,
+                name=name,
+                price=price,
+                units_sold=units_sold,
+                subtotal=subtotal
+            )
+        )
+    return result
+
+
+
+#-----------------------------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------------
+
 
 
 
