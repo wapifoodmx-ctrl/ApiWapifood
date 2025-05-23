@@ -72,6 +72,46 @@ def get_top_products(db: Session = Depends(get_db), current_user: User = Depends
     return result
 
 
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
+
+
+# Ruta para obtener todos los productos del usuario autenticado (sin límite)
+@router.get("/top", status_code=status.HTTP_200_OK, response_model=List[TopProduct], description="Obtiene todos los productos del usuario autenticado con su nombre, precio, unidades vendidas y subtotal, ordenados por unidades vendidas de mayor a menor.")
+def get_all_products(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)) -> List[TopProduct]:
+    # Obtener el user_id del usuario autenticado
+    user_id = current_user.id_users
+
+    # Calcular las unidades vendidas por producto para el usuario autenticado
+    all_products = (
+        db.query(
+            ProductsModel.name,
+            ProductsModel.price,
+            func.sum(OrdersDetailsModel.quantity).label("units_sold"),
+            func.sum(OrdersDetailsModel.subtotal).label("subtotal")
+        )
+        .join(OrdersDetailsModel, ProductsModel.id_products == OrdersDetailsModel.product_id)
+        .join(OrdersModel, OrdersModel.id_orders == OrdersDetailsModel.order_id)
+        .filter(OrdersModel.user_id == user_id)
+        .group_by(ProductsModel.id_products, ProductsModel.name, ProductsModel.price)
+        .order_by(func.sum(OrdersDetailsModel.quantity).desc())  # Ordenar por unidades vendidas de mayor a menor
+        .all()  # Sin limit(10) para devolver todos los productos
+    )
+
+    # Construir la lista de TopProduct con posiciones
+    result = []
+    for position, (name, price, units_sold, subtotal) in enumerate(all_products, 1):
+        result.append(
+            TopProduct(
+                position=position,
+                name=name,
+                price=price,
+                units_sold=units_sold,
+                subtotal=subtotal
+            )
+        )
+    return result
+
 
 #-----------------------------------------------------------------------------------------------
 #----------------------------------------------------------------------------------------------

@@ -28,6 +28,7 @@ def calculate_percentage_change(current: float, previous: float) -> float:
 #------------------------------------------------------------------
 #-----------------------------------------------------------------
 
+# ... (importaciones y otras partes del archivo se mantienen iguales)
 @router.get("/dashboard", response_model=AnalyticsResponse)
 def get_dashboard_metrics(
     db: Session = Depends(get_db),
@@ -51,9 +52,16 @@ def get_dashboard_metrics(
         )
 
     start_date = first_order[0]
-    today = datetime.now()
+    today = datetime.utcnow()  # Usar UTC para consistencia con Orders.date_time
 
-    # Calcular el número de días en el período total
+    # Usar el final del día actual (23:59:59) para incluir todas las órdenes del día
+    today = today.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    # Asegurarse de que las fechas sean comparables (sin zona horaria)
+    start_date = start_date.replace(tzinfo=None)
+    today = today.replace(tzinfo=None)
+
+    # Calcular el número de días en el período total (días completos)
     days_in_period = (today - start_date).days + 1  # +1 para incluir el día actual
 
     # 1. Ventas totales (usando Orders.total)
@@ -66,6 +74,8 @@ def get_dashboard_metrics(
         )
         .scalar() or 0.0
     )
+    # Convertir total_sales a float si es Decimal
+    total_sales = float(total_sales) if total_sales is not None else 0.0
 
     # 2. Pedidos totales (número de pedidos)
     total_orders = (
@@ -79,7 +89,6 @@ def get_dashboard_metrics(
     )
 
     # 3. Clientes nuevos (ajustado para contar usuarios distintos con rol 'client')
-    # Nota: Este cálculo podría necesitar ajustes según la lógica de tu aplicación
     new_customers = (
         db.query(func.count(Orders.user_id.distinct()))
         .filter(
@@ -97,7 +106,6 @@ def get_dashboard_metrics(
     average_daily_sales = (total_sales / days_in_period) if days_in_period > 0 else 0.0
 
     # Construir la respuesta
-    # No calculamos "cambio" porque ahora mostramos métricas acumulativas
     return AnalyticsResponse(
         total_sales=Metric(
             value=float(total_sales),
@@ -120,7 +128,6 @@ def get_dashboard_metrics(
             change_label=""
         )
     )
-
 # -------------------------------------------------------------------------
 #-----------------------------------------------------------------------
 

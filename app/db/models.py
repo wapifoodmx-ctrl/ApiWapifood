@@ -187,7 +187,7 @@ class Products(Base):
     __tablename__ = "products"
     id_products = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(50))
-    description = Column(String(50))
+    description = Column(String(500))
     price = Column(Decimal(10, 2))
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
