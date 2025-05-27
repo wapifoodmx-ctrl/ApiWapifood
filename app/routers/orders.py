@@ -27,58 +27,97 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #     Orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).all()
 #     return Orders
 
+#------------------------------------------
+#------------------------------------------
+
+
 
 @router.post("/", response_model=OrdersSchema, status_code=status.HTTP_201_CREATED,
-    description="Crea una nueva orden y su detalle para un producto existente."
+    description="Crea una nueva orden con detalles para múltiples productos existentes."
 )
 async def crear_orden(
-    product_id: int = Form(...),
-    quantity: int = Form(...),
+    product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
+    quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """Crea una nueva orden y su detalle para un producto existente."""
-    # 1. Validar la cantidad
-    if quantity <= 0:
-        raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
+    """
+    Crea una nueva orden con detalles para múltiples productos existentes.
+    Los product_ids y quantities deben ser cadenas separadas por comas.
+    """
+    # 1. Parsear las listas de product_ids y quantities
+    try:
+        product_ids_list = [int(pid) for pid in product_ids.split(",")]
+        quantities_list = [int(qty) for qty in quantities.split(",")]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Los product_ids y quantities deben ser listas de números enteros separados por comas")
 
-    # 2. Verificar que el producto exista y pertenezca al usuario autenticado
-    db_product = db.query(ProductsModel).filter(ProductsModel.id_products == product_id).first()
-    if not db_product:
-        raise HTTPException(status_code=404, detail=f"Producto con ID {product_id} no encontrado")
-    if db_product.owner_id != current_user.id_users:
-        raise HTTPException(status_code=403, detail="No tienes permiso para crear una orden para este producto")
+    # 2. Validar que las listas tengan la misma longitud
+    if len(product_ids_list) != len(quantities_list):
+        raise HTTPException(status_code=400, detail="El número de product_ids y quantities debe ser igual")
+    if not product_ids_list:
+        raise HTTPException(status_code=400, detail="Debe proporcionar al menos un producto")
 
-    # 3. Crear la orden (Orders) asociada al usuario autenticado
+    # 3. Validar las cantidades
+    for qty in quantities_list:
+        if qty <= 0:
+            raise HTTPException(status_code=400, detail="Todas las cantidades deben ser mayores que 0")
+
+    # 4. Verificar que los productos existan y pertenezcan al usuario autenticado
+    products = []
+    total_order = 0.0
+    product_names = []
+    for product_id in product_ids_list:
+        db_product = db.query(ProductsModel).filter(ProductsModel.id_products == product_id).first()
+        if not db_product:
+            raise HTTPException(status_code=404, detail=f"Producto con ID {product_id} no encontrado")
+        if db_product.owner_id != current_user.id_users:
+            raise HTTPException(status_code=403, detail=f"No tienes permiso para crear una orden para el producto con ID {product_id}")
+        products.append(db_product)
+        product_names.append(db_product.name)
+
+    # 5. Crear la orden (Orders) asociada al usuario autenticado
+    # Calcular el total de la orden y concatenar los nombres de los productos
+    for db_product, qty in zip(products, quantities_list):
+        total_order += float(db_product.price) * qty
+
     db_order = OrdersModel(
         state="Ocupado",
         date_time=datetime.utcnow(),
-        total=db_product.price * quantity,
+        total=total_order,
         orderscol="Orden creada manualmente",
         user_id=current_user.id_users,
-        product_name=db_product.name
+        product_name=", ".join(product_names)  # Concatenar nombres de productos
     )
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
 
-    # 4. Crear el detalle de pedido (OrdersDetails)
-    unit_price = db_product.price
-    subtotal = quantity * unit_price
+    # 6. Crear los detalles de pedido (OrdersDetails) para cada producto
+    for db_product, qty in zip(products, quantities_list):
+        unit_price = float(db_product.price)
+        subtotal = qty * unit_price
 
-    db_order_detail = OrdersDetailsModel(
-        order_id=db_order.id_orders,
-        product_id=db_product.id_products,
-        quantity=quantity,
-        unit_price=unit_price,
-        subtotal=subtotal
-    )
-    db.add(db_order_detail)
+        db_order_detail = OrdersDetailsModel(
+            order_id=db_order.id_orders,
+            product_id=db_product.id_products,
+            quantity=qty,
+            unit_price=unit_price,
+            subtotal=subtotal
+        )
+        db.add(db_order_detail)
+
+    # 7. Confirmar todos los detalles en una sola transacción
     db.commit()
-    db.refresh(db_order_detail)
+
+    # 8. Refrescar la orden para incluir los detalles en la respuesta
+    db.refresh(db_order)
 
     return OrdersSchema.from_orm(db_order)
+
+#------------------------------------------
+#------------------------------------------
 
 @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
 def obtenemos_orders_details(

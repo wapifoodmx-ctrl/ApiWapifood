@@ -25,6 +25,10 @@ class TablesEnum(str, Enum):
     Libre ="Libre"
     Ocupado ="Ocupado"
 
+class SubscriptionAmount(Enum):
+    PLAN_100 = 100  # 1 mesa
+    PLAN_200 = 200  # 16 mesas
+    PLAN_300 = 300  # 26 mesas
 
 #Para el metodo de pago
 #La enumeración es una lista de valores que se pueden asignar a una variable.

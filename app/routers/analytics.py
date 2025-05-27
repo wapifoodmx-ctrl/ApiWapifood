@@ -9,7 +9,7 @@ from app.db.database import get_db
 from dateutil.relativedelta import relativedelta
 from typing import Optional
 #from app.db.models import Restaurante
-from app.schemas import Metric, AnalyticsResponse
+from app.schemas import Metric, AnalyticsResponse, Orders as VentasSchema, VentasBasicSchema
 
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -28,6 +28,7 @@ def calculate_percentage_change(current: float, previous: float) -> float:
 #------------------------------------------------------------------
 #-----------------------------------------------------------------
 
+# ... (importaciones y otras partes del archivo se mantienen iguales)
 # ... (importaciones y otras partes del archivo se mantienen iguales)
 @router.get("/dashboard", response_model=AnalyticsResponse)
 def get_dashboard_metrics(
@@ -103,7 +104,9 @@ def get_dashboard_metrics(
     )
 
     # 4. Ventas promedio por día (ventas totales / número de días)
-    average_daily_sales = (total_sales / days_in_period) if days_in_period > 0 else 0.0
+
+    #average_daily_sales = (total_sales / days_in_period) if days_in_period > 0 else 0.0
+    average_daily_sales = (total_sales / total_orders) if total_orders> 0 else 0.0
 
     # Construir la respuesta
     return AnalyticsResponse(
@@ -128,14 +131,97 @@ def get_dashboard_metrics(
             change_label=""
         )
     )
+
 # -------------------------------------------------------------------------
 #-----------------------------------------------------------------------
+
+
+@router.get("/get-analytics-details", response_model=list[VentasSchema])
+async def obtenemos_fechas_total(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtiene todas las ventas de usuario."""
+    #ventas = db.query(Orders).all()  # Muestra todas las órdenes
+    ventas = (
+         db.query(Orders)
+         .filter(Orders.user_id == current_user.id_users)
+         .all()
+    )
+
+    # Verificar si hay ventas para el usuario
+    if not ventas:
+        raise HTTPException(status_code=404, detail="No se encontrarron ventas para este usuario")
+    
+    # Convertir las ventas a diccionarios
+    ventas_dicts = []
+    for venta in ventas:
+        venta_dict = {
+            "id_orders": venta.id_orders,
+            "state": venta.state,
+            "date_time": venta.date_time.isoformat() if venta.date_time else None,
+            "total": venta.total or 0.0,  # Valor por defecto si es None
+            "orderscol": venta.orderscol or "Sin descripción",
+            "product_name": venta.product_name or "Sin nombre",  # Valor por defecto
+            "user_id": venta.user_id,
+            "order_details": [
+            {
+                "id_orders_details": d.id_orders_details,
+                "order_id": d.order_id,
+                "product_id": d.product_id,
+                "quantity": d.quantity,
+                "unit_price": d.unit_price,
+                "subtotal": d.subtotal,
+            }
+            for d in getattr(venta, "order_details", [])
+        ]
+
+        }
+        ventas_dicts.append(venta_dict)
+    return [VentasSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
+
+# -------------------------------------------------------------------------
+#-----------------------------------------------------------------------
+
+
+@router.get("/get-analytics-basic", response_model=list[VentasBasicSchema])
+async def obtenemos_fechas(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtiene todas las ventas de usuario."""
+    #ventas = db.query(Orders).all()  # Muestra todas las órdenes
+    ventas = (
+         db.query(Orders)
+         .filter(Orders.user_id == current_user.id_users)
+         .all()
+    )
+
+    # Verificar si hay ventas para el usuario
+    if not ventas:
+        raise HTTPException(status_code=404, detail="No se encontrarron ventas para este usuario")
+    
+    # Convertir las ventas a diccionarios
+    ventas_dicts = []
+    for venta in ventas:
+        venta_dict = {
+            "id_orders": venta.id_orders,
+            "date_time": venta.date_time.isoformat() if venta.date_time else None,
+            "total": venta.total or 0.0,
+        }
+        ventas_dicts.append(venta_dict)
+    return [VentasBasicSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
+
+#-------------------------------------------------------------------
+#-------------------------------------------------------------------
+
+
 
 
 @router.post("/generate-analytics")
 async def generate_analytics(
     period_type: str,  # "month" o "week"
-    end_date: str = None,  # Formato: "YYYY-MM-DD", opcional
+    end_date: str = None,  # Formato: "YYYY-MM-DD"
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):

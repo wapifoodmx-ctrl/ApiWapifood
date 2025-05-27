@@ -6,7 +6,7 @@ from app.db.database import Base
 from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
 from sqlalchemy.ext.hybrid import hybrid_property
 from app.schemas import PlanType
-from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus
+from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount
 from datetime import datetime
 
 """
@@ -112,6 +112,7 @@ class User(Base):
     # Relación con Restaurante como propietario (un usuario puede ser dueño de varios restaurantes)
     #restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
     order_analytics = relationship("OrderAnalytics", back_populates="user")
+    table_details = relationship("TableDetails", back_populates="user")
 
 
     
@@ -178,9 +179,26 @@ class Tables(Base):
     state = Column(SQLAlchemyEnum(TablesEnum), nullable=False)
     # Clave foránea a 'User'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False) 
+    subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
+    table_details = relationship("TableDetails", back_populates="table")
+
+
+class TableDetails(Base):
+    __tablename__ = "table_details"
+    id_table_details = Column(Integer, primary_key=True, autoincrement=True)
+    table_id = Column(Integer, ForeignKey("tables.id_tables"))
+    #order_id = Column(Integer, ForeignKey("orders.id_orders"))
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)  # Clave foránea a la tabla 'users'
+    table_number = Column(Integer, nullable=False)  # Número de la mesa (1, 2, ..., 26)
+    estado = Column(SQLAlchemyEnum(TablesEnum), nullable=False, default=TablesEnum.Libre)  # Estado de la mesa
+    cantidad_ventas_por_mesa = Column(Float, nullable=False, default=0.0)  # Cantidad de ventas por mesa
+    
+    # Relaciones
+    table = relationship("Tables", back_populates="table_details")
+    user = relationship("User", back_populates="table_details")
     
 
 class Products(Base):
