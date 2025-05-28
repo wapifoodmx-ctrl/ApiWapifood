@@ -134,6 +134,7 @@ async def create_table_details(
 
     return {"message": f"Se han creado {mesas} mesas para el usuario", "mesas": mesas}
 
+
 #---------------------------------------
 #---------------------------------------
 

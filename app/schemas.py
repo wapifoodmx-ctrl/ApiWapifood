@@ -449,7 +449,12 @@ class AnalyticsResponse(BaseModel):
     total_sales: Metric
     total_orders: Metric
     new_customers: Metric
-    average_daily_sales: Metric  
+    average_daily_sales: Metric 
+
+class VentasBasicSchema(BaseModel):
+    id_orders: int
+    date_time: str | None
+    total: float 
 
 
 
