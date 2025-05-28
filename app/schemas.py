@@ -453,8 +453,8 @@ class AnalyticsResponse(BaseModel):
 
 class VentasBasicSchema(BaseModel):
     id_orders: int
-    date_time: str | None
-    total: float 
+    date: str | None
+    value: float 
 
 
 

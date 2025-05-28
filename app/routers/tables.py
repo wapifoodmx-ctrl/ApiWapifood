@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from sqlalchemy.orm import Session
 from typing import List
 from app.db.database import get_db
@@ -9,6 +9,7 @@ from app.db.models import User
 from fastapi.security import OAuth2PasswordBearer
 from datetime import datetime
 from app.enums import TablesEnum, SubscriptionAmount # Enum para el estado de las mesas
+
 
 router = APIRouter(
     prefix="/tables",
@@ -192,3 +193,79 @@ async def generate_tables_sub(
     db.commit()
 
     return {"message": f"Se han generado {mesas} mesas para el usuario", "mesas": mesas}
+
+#---------------------------------------
+#---------------------------------------
+
+@router.get("/status", response_model=dict, status_code=status.HTTP_200_OK)
+def get_tables_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Devuelve la cantidad máxima de mesas y su estado para el usuario autenticado."""
+    # Obtener el número máximo de mesas basado en la suscripción
+    payment = db.query(Payments).filter(
+        Payments.user_id == current_user.id_users,
+        Payments.status == "completed",
+        Payments.subscription_end_date >= datetime.utcnow()
+    ).order_by(Payments.date.desc()).first()
+
+    if not payment:
+        raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
+
+    subscription_mesas = {
+        100: 1,
+        200: 16,
+        300: 26
+    }
+    max_mesas = subscription_mesas.get(payment.amount, 0)
+    if max_mesas == 0:
+        raise HTTPException(status_code=400, detail="Monto de suscripción no reconocido")
+
+    # Obtener el estado de todas las mesas del usuario
+    tables = db.query(TablesModel).filter(TablesModel.user_id == current_user.id_users).all()
+    table_status = {table.number: table.state.value for table in tables}
+
+    return {
+        "max_mesas": max_mesas,
+        "table_status": table_status
+    }
+#---------------------------------------
+#---------------------------------------
+
+
+@router.post("/status", response_model=dict, status_code=status.HTTP_200_OK)
+def update_table_status(
+    number: int = Form(... , description="Número de la mesa a actualizar"),
+    state: TablesEnum = Form(..., description="Nuevo estado de la mesa (Libre u Ocupado)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Cambia el estado de una mesa específica entre Libre y Ocupado."""
+    # Verificar si la mesa existe para el usuario
+    table = db.query(TablesModel).filter(
+        TablesModel.number == number,
+        TablesModel.user_id == current_user.id_users
+    ).first()
+    if not table:
+        raise HTTPException(status_code=404, detail=f"Mesa {number} no encontrada para este usuario")
+
+    # Validación: Mesa 1 siempre debe estar libre
+    if number == 1 and state == TablesEnum.Ocupado:
+        raise HTTPException(status_code=403, detail="La mesa 1 siempre debe estar libre (punto de venta)")
+
+    # Validación: No permitir cambiar a Ocupado si ya está Ocupado
+    if table.state == TablesEnum.Ocupado and state == TablesEnum.Ocupado:
+        raise HTTPException(status_code=400, detail=f"La mesa {number} ya está ocupada")
+
+    # Actualizar el estado
+    try:
+        table.state = state
+        db.commit()
+        db.refresh(table)
+        return {"mensaje": f"Estado de la mesa {number} actualizado a {state.value}"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Error actualizando el estado de la mesa: {str(e)}")
+
+# ... (otros endpoints como create_table_details, generate_tables_sub permanecen igual)

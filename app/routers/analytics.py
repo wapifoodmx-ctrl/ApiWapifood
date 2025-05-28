@@ -206,8 +206,8 @@ async def obtenemos_fechas(
     for venta in ventas:
         venta_dict = {
             "id_orders": venta.id_orders,
-            "date_time": venta.date_time.isoformat() if venta.date_time else None,
-            "total": venta.total or 0.0,
+            "date": venta.date_time.isoformat() if venta.date_time else None,
+            "value": venta.total or 0.0,
         }
         ventas_dicts.append(venta_dict)
     return [VentasBasicSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
