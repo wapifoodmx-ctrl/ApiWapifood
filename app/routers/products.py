@@ -53,7 +53,7 @@ def get_top_products(db: Session = Depends(get_db), current_user: User = Depends
         .filter(Orders.user_id == user_id)
         .group_by(Products.id_products, Products.name, Products.price)
         .order_by(func.sum(OrdersDetails.quantity).desc())  # Ordenar por unidades vendidas de mayor a menor
-        .limit(10)  # Limitar a los 10 más vendidos
+        .limit(5)  # Limitar a los 5 más vendidos
         .all()
     )
 

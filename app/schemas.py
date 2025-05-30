@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Union, Optional
 #from app.db.models import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum
-from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType
+from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, OrderStatusEnum
 #Para el rol de los usuarios
 #La enumeración es una lista de valores que se pueden asignar a una variable.
 #En este caso, el rol puede ser "admin
@@ -136,6 +136,7 @@ class OrdersDetailsSchema(BaseModel):
 class Orders(BaseModel):
     id_orders: int | None = None
     state: RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo para el estado de la orden
     date_time: datetime
     total: Decimal
     orderscol: str
@@ -146,10 +147,19 @@ class Orders(BaseModel):
     class Config:
         from_attributes = True
 
+# Nuevo esquema para la respuesta de creación de órdenes
+class OrderCreateResponse(Orders):
+    mesa_id: Optional[int] = None  # ID de la mesa asignada
+    mesa_number: Optional[int] = None  # Número de la mesa asignada
+
+    class Config:
+        from_attributes = True
+
 
 class OrdersResponse(BaseModel):
     id_orders: int | None = None
     state: RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
     date_time: datetime
     total: Decimal  # Cambiar a Decimal para coincidir con OrdersModel
     orderscol: str

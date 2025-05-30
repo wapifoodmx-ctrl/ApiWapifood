@@ -55,3 +55,13 @@ class PaymentStatus(str, Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+
+
+class OrderStatusEnum(str, Enum):
+    Pendiente = "Pendiente"
+    EnCocina = "EnCocina"
+    Preparado = "Preparado"
+    Cancelado = "Cancelado"
+    Completado = "Completado"

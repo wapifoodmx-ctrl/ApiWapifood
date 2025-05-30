@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse
+from app.enums import RoleOrders, TablesEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
 from app.repository.auth import get_current_user
@@ -32,8 +33,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
 
 
-@router.post("/", response_model=OrdersSchema, status_code=status.HTTP_201_CREATED,
-    description="Crea una nueva orden con detalles para múltiples productos existentes."
+@router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
+    description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa disponible."
 )
 async def crear_orden(
     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
@@ -43,7 +44,7 @@ async def crear_orden(
     token: str = Depends(oauth2_scheme)
 ):
     """
-    Crea una nueva orden con detalles para múltiples productos existentes.
+    Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa disponible.
     Los product_ids y quantities deben ser cadenas separadas por comas.
     """
     # 1. Parsear las listas de product_ids y quantities
@@ -77,24 +78,39 @@ async def crear_orden(
         products.append(db_product)
         product_names.append(db_product.name)
 
-    # 5. Crear la orden (Orders) asociada al usuario autenticado
-    # Calcular el total de la orden y concatenar los nombres de los productos
+    # 5. Buscar la primera mesa disponible (Libre, number != 1)
+    available_table = db.query(TablesModel).filter(
+        TablesModel.user_id == current_user.id_users,
+        TablesModel.state == TablesEnum.Libre,
+        TablesModel.number != 1  # Excluir la mesa 1 (punto de venta)
+    ).order_by(TablesModel.number.asc()).first()
+
+    if not available_table:
+        raise HTTPException(status_code=400, detail="No hay mesas disponibles para asignar (todas están ocupadas o no tienes mesas asignadas)")
+
+    # 6. Calcular el total de la orden
     for db_product, qty in zip(products, quantities_list):
         total_order += float(db_product.price) * qty
 
+    # 7. Crear la orden (Orders) asociada al usuario autenticado
     db_order = OrdersModel(
-        state="Ocupado",
+        state=RoleOrders.Ocupado,
         date_time=datetime.utcnow(),
         total=total_order,
         orderscol="Orden creada manualmente",
         user_id=current_user.id_users,
-        product_name=", ".join(product_names)  # Concatenar nombres de productos
+        product_name=", ".join(product_names),
+        mesa_id=available_table.id_tables  # Asignar la mesa encontrada
     )
     db.add(db_order)
+
+    # 8. Actualizar el estado de la mesa a Ocupado
+    available_table.state = TablesEnum.Ocupado
     db.commit()
     db.refresh(db_order)
+    db.refresh(available_table)
 
-    # 6. Crear los detalles de pedido (OrdersDetails) para cada producto
+    # 9. Crear los detalles de pedido (OrdersDetails) para cada producto
     for db_product, qty in zip(products, quantities_list):
         unit_price = float(db_product.price)
         subtotal = qty * unit_price
@@ -108,14 +124,17 @@ async def crear_orden(
         )
         db.add(db_order_detail)
 
-    # 7. Confirmar todos los detalles en una sola transacción
     db.commit()
 
-    # 8. Refrescar la orden para incluir los detalles en la respuesta
+    # 10. Refrescar la orden para incluir los detalles y el número de la mesa
     db.refresh(db_order)
 
-    return OrdersSchema.from_orm(db_order)
+    # Crear una instancia del esquema manualmente para incluir mesa_number
+    order_response = OrderCreateResponse.from_orm(db_order)
+    order_response.mesa_id = db_order.mesa_id  # Asegurar que mesa_id se incluya
+    order_response.mesa_number = available_table.number  # Añadir el número de la mesa
 
+    return order_response
 #------------------------------------------
 #------------------------------------------
 

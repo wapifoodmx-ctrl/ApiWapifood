@@ -6,7 +6,7 @@ from app.db.database import Base
 from enum import Enum as PyEnum  # Renombramos Enum de Python a PyEnum
 from sqlalchemy.ext.hybrid import hybrid_property
 from app.schemas import PlanType
-from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount
+from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount, OrderStatusEnum
 from datetime import datetime
 
 """
@@ -157,6 +157,7 @@ class Orders(Base):
     id_orders = Column(Integer, primary_key=True, autoincrement=True)
     mesa_id = Column(Integer, ForeignKey("tables.id_tables"))  # Clave foránea a la tabla 'tables'
     state = Column(SQLAlchemyEnum(RoleOrders), nullable=False)
+    order_status = Column(SQLAlchemyEnum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.Pendiente)  # Nuevo campo para el estado del pedido
     date_time = Column(DateTime)
     total = Column(Decimal)
     orderscol = Column(String(50))
