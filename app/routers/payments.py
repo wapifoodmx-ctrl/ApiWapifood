@@ -63,9 +63,9 @@ async def create_checkout_session(
             ],
             mode="subscription",
             customer=customer.id,
-            success_url="http://192.168.1.71:3000/success/?session_id={CHECKOUT_SESSION_ID}",
+            success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
             #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="http://192.168.1.71:3000/error",
+            cancel_url="https://comandapp.h-dev.xyz/error",
             #cancel_url=YOUR_DOMAIN + "/payments/cancel",
             metadata={"user_id": str(current_user.id_users)},
         )
@@ -109,6 +109,10 @@ async def create_checkout_session(
     except Exception as e:
         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
 
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+
+
 @router.post("/create-portal-session", status_code=status.HTTP_200_OK)  # Cambia a 200
 async def create_portal_session(
     session_id: str = Form(...),
@@ -133,6 +137,10 @@ async def create_portal_session(
 
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
+    
+##----------
+#----------------
+
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -149,61 +157,97 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         if event["type"] == "checkout.session.completed":
             checkout_session = event["data"]["object"]
             subscription_id = checkout_session.get("subscription")
+            print(f"Procesando checkout.session.completed - Session ID: {checkout_session.id}, Subscription ID: {subscription_id}")
 
             if not subscription_id:
+                print("No subscription_id in event")
                 return {"status": "ignored", "message": "No subscription_id in event"}
 
             payment = db.query(Payments).filter(Payments.checkout_session_id == checkout_session.id).first()
             if not payment:
+                print(f"Pago no encontrado para checkout_session_id: {checkout_session.id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if not user:
+                print(f"Usuario no encontrado para user_id: {payment.user_id}")
                 return {"status": "ignored", "message": "User not found"}
 
             payment.subscription_id = subscription_id or payment.subscription_id
             payment.stripe_customer_id = checkout_session.customer or payment.stripe_customer_id
 
-            subscription = stripe.Subscription.retrieve(subscription_id)
-            print(f"Subscription retrieved: {subscription}")
-            print(f"Subscription Current Period End: {subscription.current_period_end}")
+            try:
+                subscription = stripe.Subscription.retrieve(subscription_id)
+                print(f"Subscription retrieved: {subscription}")
+            except stripe.error.InvalidRequestError as e:
+                print(f"Error al recuperar la suscripción: {str(e)}")
+                return {"status": "error", "message": f"Error al recuperar la suscripción: {str(e)}"}
 
-            if subscription.plan and subscription.plan.amount:
-                amount = subscription.plan.amount / 100
-            else:
-                price_id = subscription.plan.id if subscription.plan else None
-                if price_id:
-                    price = stripe.Price.retrieve(price_id)
-                    amount = price.unit_amount / 100
+            try:
+                if subscription.plan and subscription.plan.amount:
+                    amount = subscription.plan.amount / 100
                 else:
-                    amount = 0
-            payment.amount = amount
-            print(f"Amount set to: {amount}")
-
-            if subscription.current_period_end:
-                subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
-                print(f"Subscription end date from current_period_end: {subscription_end_date}")
-            else:
-                if subscription.current_period_start and subscription.plan and subscription.plan.interval:
-                    start_date = datetime.utcfromtimestamp(subscription.current_period_start)
-                    if subscription.plan.interval == "month":
-                        subscription_end_date = start_date + timedelta(days=30)
-                    elif subscription.plan.interval == "year":
-                        subscription_end_date = start_date + timedelta(days=365)
+                    price_id = subscription.plan.id if subscription.plan else None
+                    if price_id:
+                        price = stripe.Price.retrieve(price_id)
+                        amount = price.unit_amount / 100
                     else:
-                        subscription_end_date = start_date + timedelta(days=30)
-                    print(f"Subscription end date calculated from start: {subscription_end_date}")
-                else:
-                    subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                    print(f"Subscription end date calculated manually: {subscription_end_date}")
-            payment.subscription_end_date = subscription_end_date
-            print(f"Subscription end date saved: {payment.subscription_end_date}")
+                        amount = 0
+                payment.amount = amount
+                print(f"Amount set to: {amount}")
+            except stripe.error.InvalidRequestError as e:
+                print(f"Error al recuperar el precio: {str(e)}")
+                amount = 0
+                payment.amount = amount
 
+            # Manejo aún más robusto de current_period_end
+            subscription_end_date = None
+            try:
+                # Verificar primero si el atributo existe y es accesible
+                current_period_end = getattr(subscription, 'current_period_end', None)
+                print(f"Valor de current_period_end: {current_period_end}")
+                if current_period_end is not None and isinstance(current_period_end, (int, float)) and current_period_end > 0:
+                    subscription_end_date = datetime.utcfromtimestamp(current_period_end)
+                    print(f"Subscription end date from current_period_end: {subscription_end_date}")
+                else:
+                    print(f"current_period_end no válido o ausente: {current_period_end}")
+                    raise ValueError("current_period_end no disponible o inválido")
+            except (ValueError, TypeError, OSError) as e:
+                print(f"Error al procesar current_period_end: {str(e)}")
+                try:
+                    # Verificar current_period_start de manera similar
+                    current_period_start = getattr(subscription, 'current_period_start', None)
+                    plan_interval = subscription.plan.interval if subscription.plan and hasattr(subscription.plan, 'interval') else None
+                    print(f"current_period_start: {current_period_start}, plan.interval: {plan_interval}")
+                    if current_period_start is not None and isinstance(current_period_start, (int, float)) and current_period_start > 0 and plan_interval:
+                        start_date = datetime.utcfromtimestamp(current_period_start)
+                        if plan_interval == "month":
+                            subscription_end_date = start_date + timedelta(days=30)
+                        elif plan_interval == "year":
+                            subscription_end_date = start_date + timedelta(days=365)
+                        else:
+                            subscription_end_date = start_date + timedelta(days=30)
+                        print(f"Subscription end date calculated from start: {subscription_end_date}")
+                    else:
+                        print(f"current_period_start o plan.interval no disponibles: start={current_period_start}, interval={plan_interval}")
+                        subscription_end_date = datetime.utcnow() + timedelta(days=30)
+                        print(f"Subscription end date calculated manually: {subscription_end_date}")
+                except (ValueError, TypeError, OSError) as e:
+                    print(f"Error al calcular la fecha de finalización: {str(e)}")
+                    subscription_end_date = datetime.utcnow() + timedelta(days=30)
+                    print(f"Usando fecha por defecto: {subscription_end_date}")
+
+            payment.subscription_end_date = subscription_end_date
             payment.status = PaymentStatus.COMPLETED
             payment.email = user.email
-            db.commit()
-            db.refresh(payment)
-            print(f"Payment updated in DB: {payment.__dict__}")
+            try:
+                db.commit()
+                db.refresh(payment)
+                print(f"Pago actualizado en la base de datos: {payment.__dict__}")
+            except Exception as e:
+                db.rollback()
+                print(f"Error al actualizar la base de datos: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Error al actualizar la base de datos: {str(e)}")
 
         elif event["type"] == "customer.subscription.updated":
             subscription = event["data"]["object"]
@@ -304,6 +348,11 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
+    
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+
     
 @router.get("/success", status_code=status.HTTP_200_OK)
 async def payment_success(request: Request, db: Session = Depends(get_db)):
