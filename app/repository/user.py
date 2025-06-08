@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
 from datetime import datetime
-from fastapi import File, UploadFile
+from fastapi import File, UploadFile, HTTPException, status,Form
 from pydantic import ValidationError
 import json
 import os
@@ -182,50 +182,67 @@ def obtener_user_con_info(user_id: int, db: Session):
 #         db.rollback()
 #         raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")
 
-def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Session):
+def actualizar_o_crear_user_info(
+    user_id: int,
+    apellido: str = Form(""),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    codigo_postal: int = Form(""),
+    ciudad: str = Form(""),
+    alcaldia: str = Form(""),
+    nombre_restaurante: str = Form(""),
+    image: UploadFile = None,
+    db: Session = None
+):
     """
     Actualiza o crea la información del usuario autenticado.
     Los campos no enviados en el JSON se mantienen con su valor actual o se asignan como null.
     """
-    # Parsear el JSON recibido
-    try:
-        user_info_data = json.loads(user_info)
-    except json.JSONDecodeError:
-        raise ValueError("El campo user_info debe ser un JSON válido")
-
+    # Obtener datos del usuario
+    user = db.query(User).filter(User.id_users == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
     # Buscar si ya existe un registro de UserInfo para el usuario
     user_info_record = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
 
     if user_info_record:
-        # Actualizar los campos existentes solo si están presentes en el JSON
-        user_info_record.nombre = user_info_data.get("nombre", user_info_record.nombre)
-        user_info_record.apellido = user_info_data.get("apellido", user_info_record.apellido)
-        user_info_record.email = user_info_data.get("email", user_info_record.email)
-        user_info_record.telefono = user_info_data.get("telefono", user_info_record.telefono)
-        user_info_record.direccion = user_info_data.get("direccion", user_info_record.direccion)
-        user_info_record.codigo_postal = user_info_data.get("codigo_postal", user_info_record.codigo_postal)
-        user_info_record.ciudad = user_info_data.get("ciudad", user_info_record.ciudad)
-        user_info_record.alcaldia = user_info_data.get("alcaldia", user_info_record.alcaldia)
+        # Actualizar los campos del registro existente
+        user_info_record.nombre = user.name
+        user_info_record.apellido = apellido or user_info_record.apellido
+        user_info_record.email = user.email
+        user_info_record.telefono = telefono or user_info_record.telefono
+        user_info_record.direccion = direccion or user_info_record.direccion
+        user_info_record.codigo_postal = codigo_postal or user_info_record.codigo_postal
+        user_info_record.ciudad = ciudad or user_info_record.ciudad
+        user_info_record.alcaldia = alcaldia or user_info_record.alcaldia
+        user_info_record.nombre_restaurante = nombre_restaurante or user_info_record.nombre_restaurante
     else:
         # Crear un nuevo registro de UserInfo con valores opcionales
         user_info_record = UserInfo(
             user_id=user_id,
-            nombre=user_info_data.get("nombre"),
-            apellido=user_info_data.get("apellido"),
-            email=user_info_data.get("email"),
-            telefono=user_info_data.get("telefono"),
-            direccion=user_info_data.get("direccion"),
-            codigo_postal=user_info_data.get("codigo_postal"),
-            ciudad=user_info_data.get("ciudad"),
-            alcaldia=user_info_data.get("alcaldia"),
+            user_uuid=user.id_users,
+            nombre=user.name,
+            apellido=apellido,
+            email=user.email,
+            telefono=telefono,
+            direccion=direccion,
+            codigo_postal=codigo_postal,
+            ciudad=ciudad,
+            alcaldia=alcaldia,
+            nombre_restaurante=nombre_restaurante,
         )
         db.add(user_info_record)
+    
+    # Confirmar el registro de UserInfo para obtener el id_user_info
+    db.commit()
+    db.refresh(user_info_record)
 
     # Manejar la imagen si se proporciona
     if image:
         # Validar el tipo de archivo
         if not image.content_type.startswith("image/"):
-            raise ValueError("El archivo debe ser una imagen")
+            raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
 
         # Guardar la imagen en el sistema de archivos
         file_path = f"static/uploadsUser/{image.filename}"
@@ -239,7 +256,7 @@ def actualizar_o_crear_user_info(user_id: int, user_info: str, image, db: Sessio
             image_record.file_path = file_path
         else:
             image_record = ImageUser(
-                user_info_id=user_info_record.id_user_info,
+                user_info_id=user_info_record.id_user_info,  # Ahora tiene un valor válido
                 file_name=image.filename,
                 file_path=file_path,
             )

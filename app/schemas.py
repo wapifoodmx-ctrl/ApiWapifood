@@ -87,7 +87,9 @@ class UserInfo(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
+    user_uuid: Optional[str] = None  # UUID del usuario (opcional)
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -323,6 +325,7 @@ class UserInfoCreate(BaseModel):
     codigo_postal: int | None = None
     ciudad: str | None = None 
     alcaldia: str | None = None
+    nombre_restaurante: str | None = None  # Nombre del restaurante asociado
 
     class Config:
         from_attributes = True
@@ -337,6 +340,10 @@ class UserInfoResponse(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
+
+
+    
 
     class Config:
         orm_mode = True
