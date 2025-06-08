@@ -19,7 +19,7 @@ router = APIRouter(
 
 # Cargar variables de entorno
 load_dotenv()
-BASE_URL = os.getenv("BASE_URL", "http://192.168.1.69:8000")
+BASE_URL = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
@@ -130,3 +130,54 @@ def obtener_lista_categorias(
         raise HTTPException(status_code=404, detail="No se encontraron categorías para el usuario autenticado")
 
     return categorias
+
+#------------------------------------------------------------------------------------------------------
+
+@router.get("/web-menu/{uuid}", response_model=List[CategoryWithProducts], status_code=status.HTTP_200_OK)
+def Muestra_el_menu(
+    uuid: str,
+    db: Session = Depends(get_db),
+    #current_user: User = Depends(get_current_user),
+    #token: str = Depends(oauth2_scheme)
+):
+    """Obtiene todas las categorías con sus productos para el usuario identificado por uuid (sin autenticación)."""
+    # Buscar el usuario por uuid
+    user = db.query(User).filter(User.uuid == uuid).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Obtener categorías asociadas al usuario
+    categorias = (
+        db.query(CategoriaModel)
+        .options(joinedload(CategoriaModel.productos).joinedload(ProductsModel.images))
+        .filter(CategoriaModel.owner_id == user.id_users)
+        .all()
+    )
+
+    resultado = []
+    for categoria in categorias:
+        productos = [
+            {
+                "id_products": producto.id_products,
+                "name": producto.name,
+                "description": producto.description,
+                "price": producto.price,
+                "category_id": producto.category_id,
+                "status": producto.status,
+                "image_url": [
+                    f"{BASE_URL}/static/uploads/{image.file_name}" for image in producto.images
+                ],
+                "nombre_categoria": categoria.nombre_categoria
+            }
+            for producto in categoria.productos if producto.owner_id == user.id_users
+        ]
+        if productos:
+            resultado.append({
+                "nombre_categoria": categoria.nombre_categoria,
+                "productos": productos
+            })
+
+    return resultado
+
+#------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------

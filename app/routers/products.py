@@ -25,7 +25,7 @@ router = APIRouter(
     )
 
 # URL base del servidor para las imágenes
-BASE_URL = "http://192.168.1.69:8000"
+BASE_URL = "https://comandapp-api.h-dev.xyz"
 # Directorio donde se guardarán las imágenes
 UPLOAD_DIR = Path("app/static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
