@@ -144,7 +144,7 @@ class UserInfo(Base):
     # Relaciones
     # Clave foránea a la tabla 'users'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False, unique=True)  # unique=True asegura relación 1:1
-    user_uuid = Column(Integer, nullable=True, unique=True)
+    user_uuid = Column(String(50), nullable=True, unique=True)
     
     # Relación inversa con User
     user = relationship("User", back_populates="user_info")
@@ -166,7 +166,7 @@ class Orders(Base):
     date_time = Column(DateTime)
     total = Column(Decimal)
     orderscol = Column(String(50))
-    product_name = Column(String(100))
+    product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     order_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     # Relaciones
@@ -211,7 +211,7 @@ class TableDetails(Base):
 class Products(Base):
     __tablename__ = "products"
     id_products = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50))
+    name = Column(String(1500))
     description = Column(String(500))
     price = Column(Decimal(10, 2))
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna

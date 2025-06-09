@@ -9,6 +9,8 @@ from app.oauth import get_current_user
 from app.schemas import User as UserSchema
 from app.repository import user as user_repo
 from pydantic import ValidationError
+from typing import Optional
+
 
  # Importa directamente la función
 
@@ -53,6 +55,9 @@ def eliminar_usuario(user_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return {"mensaje": "Usuario eliminado exitosamente"}
 
+#-------------------------------------------------------------------------
+#--------------------------------------------------------------------------
+
 # Actualizar un usuario
 @router.put('/{user_id}', status_code=status.HTTP_200_OK, response_model=ShowUser)
 def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get_db), 
@@ -62,31 +67,32 @@ def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return res
 
+#-------------------------------------------------------------------------
+#--------------------------------------------------------------------------
+
+
 @router.patch("/me/info", status_code=status.HTTP_200_OK, response_model=UserInfoResponse)
 async def actualizar_o_crear_user_info(
-    apellido: str = Form(""),
-    telefono: str = Form(""),
-    direccion: str = Form(""),
-    codigo_postal: int = Form(""),
-    ciudad: str = Form(""),
-    alcaldia: str = Form(""),
-    nombre_restaurante: str = Form(""),
-    image: UploadFile = File(None),
+    apellido: Optional[str] = Form(None),
+    telefono: Optional[str] = Form(None),
+    direccion: Optional[str] = Form(None),
+    codigo_postal: Optional[int] = Form(None),  # Corregido
+    ciudad: Optional[str] = Form(None),
+    alcaldia: Optional[str] = Form(None),
+    nombre_restaurante: Optional[str] = Form(None),
+    image: UploadFile = File(None),  # Ya está correcto
     db: Session = Depends(get_db),
-    current_user: UserSchema = Depends(get_current_user)  # Usar el esquema Pydantic para current_user
+    current_user: UserSchema = Depends(get_current_user)
 ):
     """
     Añade o actualiza la información del usuario autenticado.
     """
-    # Obtener el user_id desde el usuario autenticado
     user_id = current_user.id_users
 
-    # Verificar si el usuario existe (usando el modelo de SQLAlchemy)
     usuario = db.query(UserModel).filter(UserModel.id_users == user_id).first()
     if not usuario:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
-    # Llamar al repositorio para crear o actualizar UserInfo
     try:
         nueva_info = user_repo.actualizar_o_crear_user_info(
             user_id, apellido, telefono, direccion, codigo_postal, ciudad, alcaldia, nombre_restaurante, image, db
@@ -99,12 +105,17 @@ async def actualizar_o_crear_user_info(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Error de valor: {str(e)}")
     except HTTPException as e:
-        raise e  # Reenviar excepciones específicas del repositorio
+        raise e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error actualizando información del usuario: {str(e)}"
         )
+
+
+
+#------------------------------------------------------------------------
+#-------------------------------------------------------------------------
 
 # Nuevo endpoint para obtener UserInfo del usuario autenticado
 @router.get("/me/info", response_model=UserWithInfo, status_code=status.HTTP_200_OK)

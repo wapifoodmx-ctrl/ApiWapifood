@@ -6,7 +6,9 @@ from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
 from datetime import datetime
-from fastapi import File, UploadFile, HTTPException, status,Form
+from fastapi import File, UploadFile, HTTPException, status,Form, Depends
+from app.db.database import get_db
+from typing import Optional
 from pydantic import ValidationError
 import json
 import os
@@ -184,15 +186,15 @@ def obtener_user_con_info(user_id: int, db: Session):
 
 def actualizar_o_crear_user_info(
     user_id: int,
-    apellido: str = Form(""),
-    telefono: str = Form(""),
-    direccion: str = Form(""),
-    codigo_postal: int = Form(""),
-    ciudad: str = Form(""),
-    alcaldia: str = Form(""),
-    nombre_restaurante: str = Form(""),
+    apellido: Optional[str] = Form(None),
+    telefono: Optional[str] = Form(None),
+    direccion: Optional[str] = Form(None),
+    codigo_postal: Optional[int] = Form(None),  # Cambiado a Optional[int]
+    ciudad: Optional[str] = Form(None),
+    alcaldia: Optional[str] = Form(None),
+    nombre_restaurante: Optional[str] = Form(None),
     image: UploadFile = None,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """
     Actualiza o crea la información del usuario autenticado.
@@ -221,7 +223,7 @@ def actualizar_o_crear_user_info(
         # Crear un nuevo registro de UserInfo con valores opcionales
         user_info_record = UserInfo(
             user_id=user_id,
-            user_uuid=user.id_users,
+            user_uuid=user.uuid,  # Usar user.uuid en lugar de user.id_users
             nombre=user.name,
             apellido=apellido,
             email=user.email,
@@ -256,7 +258,7 @@ def actualizar_o_crear_user_info(
             image_record.file_path = file_path
         else:
             image_record = ImageUser(
-                user_info_id=user_info_record.id_user_info,  # Ahora tiene un valor válido
+                user_info_id=user_info_record.id_user_info,
                 file_name=image.filename,
                 file_path=file_path,
             )

@@ -89,7 +89,7 @@ class UserInfo(BaseModel):
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
-    user_uuid: Optional[int] = None  # UUID del usuario (opcional)
+    user_uuid: Optional[str] = None  # UUID del usuario (opcional)
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -344,6 +344,8 @@ class UserInfoCreate(BaseModel):
     ciudad: str | None = None 
     alcaldia: str | None = None
     nombre_restaurante: str | None = None  # Nombre del restaurante asociado
+    user_id: Optional[int] = None
+    user_uuid: Optional[str] = None  # Correcto como str
 
     class Config:
         from_attributes = True
@@ -359,6 +361,11 @@ class UserInfoResponse(BaseModel):
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
+    user_id: int | None = None
+    user_uuid: Optional[str] = None  # Correctamente definido como str
+
+    class Config:
+        orm_mode = True  # Nota: orm_mode es para Pydantic V1; en V2 es from_attributes
 
 
     
