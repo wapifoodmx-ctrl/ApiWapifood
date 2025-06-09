@@ -65,3 +65,4 @@ class OrderStatusEnum(str, Enum):
     Preparado = "Preparado"
     Cancelado = "Cancelado"
     Completado = "Completado"
+    Finalizado = "Finalizado"

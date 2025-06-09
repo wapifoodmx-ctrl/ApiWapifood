@@ -89,7 +89,7 @@ class UserInfo(BaseModel):
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
-    user_uuid: Optional[str] = None  # UUID del usuario (opcional)
+    user_uuid: Optional[int] = None  # UUID del usuario (opcional)
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -168,7 +168,7 @@ class OrderCreateResponse(BaseModel):
     product_name: str
     order_details: List[OrdersDetailsSchema]
     mesa_id: int  # ID de la mesa asignada
-    mesa_number: int  # Número de la mesa asignada
+    mesa_number: int  | None = None # Número de la mesa asignada
     order_uuid: str  # Nuevo campo para el UUID único de la orden
 
     class Config:

@@ -19,16 +19,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # ...existing code...
-
 def upgrade() -> None:
     """Upgrade schema."""
-    # Agrega la columna user_uuid a la tabla UserInfo
-    op.add_column('UserInfo', sa.Column('user_uuid', sa.Integer(), nullable=False, unique=True))
+    # Agrega la columna user_uuid a la tabla user_info
+    op.add_column('user_info', sa.Column('user_uuid', sa.Integer(), nullable=False, unique=True))
     # Si necesitas el constraint único explícitamente (algunos backends lo requieren)
-    # op.create_unique_constraint('uq_userinfo_user_uuid', 'UserInfo', ['user_uuid'])
+    # op.create_unique_constraint('uq_userinfo_user_uuid', 'user_info', ['user_uuid'])
 
 def downgrade() -> None:
     """Downgrade schema."""
-    # Elimina la columna user_uuid de la tabla UserInfo
-    op.drop_column('UserInfo', 'user_uuid')
-# ...existing code...
+    # Elimina la columna user_uuid de la tabla user_info
+    op.drop_column('user_info', 'user_uuid')
