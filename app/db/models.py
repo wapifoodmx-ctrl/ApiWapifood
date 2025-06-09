@@ -139,10 +139,13 @@ class UserInfo(Base):
     codigo_postal = Column(Integer, nullable=True)
     ciudad = Column(String(50), nullable=True)
     alcaldia = Column(String(50), nullable=True)
+    nombre_restaurante = Column(String(50), nullable=True)
 
     # Relaciones
     # Clave foránea a la tabla 'users'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False, unique=True)  # unique=True asegura relación 1:1
+    user_uuid = Column(Integer, nullable=True, unique=True)
+    
     # Relación inversa con User
     user = relationship("User", back_populates="user_info")
     image_user = relationship("ImageUser", back_populates="user_info", uselist=False)  # Relación 1:1

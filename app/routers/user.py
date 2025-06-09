@@ -64,7 +64,13 @@ def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get
 
 @router.patch("/me/info", status_code=status.HTTP_200_OK, response_model=UserInfoResponse)
 async def actualizar_o_crear_user_info(
-    user_info: str = Form(...),  # Recibir user_info como una cadena JSON
+    apellido: str = Form(""),
+    telefono: str = Form(""),
+    direccion: str = Form(""),
+    codigo_postal: int = Form(""),
+    ciudad: str = Form(""),
+    alcaldia: str = Form(""),
+    nombre_restaurante: str = Form(""),
     image: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)  # Usar el esquema Pydantic para current_user
@@ -82,7 +88,9 @@ async def actualizar_o_crear_user_info(
 
     # Llamar al repositorio para crear o actualizar UserInfo
     try:
-        nueva_info = user_repo.actualizar_o_crear_user_info(user_id, user_info, image, db)
+        nueva_info = user_repo.actualizar_o_crear_user_info(
+            user_id, apellido, telefono, direccion, codigo_postal, ciudad, alcaldia, nombre_restaurante, image, db
+        )
         return nueva_info
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="El campo user_info debe ser un JSON válido")
