@@ -148,9 +148,26 @@ class Orders(BaseModel):
         from_attributes = True
 
 # Nuevo esquema para la respuesta de creación de órdenes
-class OrderCreateResponse(Orders):
-    mesa_id: Optional[int] = None  # ID de la mesa asignada
-    mesa_number: Optional[int] = None  # Número de la mesa asignada
+# class OrderCreateResponse(Orders):
+#     mesa_id: Optional[int] = None  # ID de la mesa asignada
+#     mesa_number: Optional[int] = None  # Número de la mesa asignada
+
+#     class Config:
+#         from_attributes = True
+
+class OrderCreateResponse(BaseModel):
+    id_orders: int | None = None
+    state: RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
+    date_time: datetime
+    total: Decimal
+    orderscol: str
+    user_id: int
+    product_name: str
+    order_details: List[OrdersDetailsSchema]
+    mesa_id: int  # ID de la mesa asignada
+    mesa_number: int  # Número de la mesa asignada
+    order_uuid: str  # Nuevo campo para el UUID único de la orden
 
     class Config:
         from_attributes = True
@@ -164,6 +181,7 @@ class OrdersResponse(BaseModel):
     total: Decimal  # Cambiar a Decimal para coincidir con OrdersModel
     orderscol: str
     user_id: int | None = None
+    order_uuid: str  # Nuevo campo para el UUID único de la orden
     product_name: str
     details: List[OrdersDetailsSchema]  # Cambiar a "details" para mantener consistencia
 
@@ -416,6 +434,10 @@ class OrderDetailCreate(BaseModel):
 
 class OrdersCreate(BaseModel):
     details: List[OrderDetailCreate]
+    mesa_id: int
+
+    class Config:
+        from_attributes = True
 
 class OrderDetailResponse(BaseModel):
     product_id: int
@@ -496,3 +518,14 @@ class PaymentRequest(BaseModel):
 class SubscriptionRequest(BaseModel):
     plan: PlanType
     #order_id: str
+
+
+class OrderFinalizeResponse(BaseModel):
+    message: str
+    order_id: int
+    mesa_id: int
+    order_status: OrderStatusEnum
+    mesa_state: TablesEnum
+
+    class Config:
+        from_attributes = True

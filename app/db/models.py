@@ -165,6 +165,7 @@ class Orders(Base):
     orderscol = Column(String(50))
     product_name = Column(String(100))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
+    order_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
