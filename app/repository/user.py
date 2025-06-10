@@ -1,5 +1,5 @@
 # app/repository/user.py
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.db import models
 from app.schemas import User, UserInfo, UserInfoCreate
 from fastapi import HTTPException, status
@@ -153,13 +153,20 @@ def actualizar_usuarios(user_id, updateUser, db: Session):
 #         )
 
 def obtener_user_con_info(user_id: int, db: Session):
-    user = db.query(models.User).filter(models.User.id_users == user_id).first()
+    user = (
+        db.query(models.User)
+        .options(
+            joinedload(models.User.user_info).joinedload(models.UserInfo.image_user)
+        )
+        .filter(models.User.id_users == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No existe el usuario con el id {user_id}"
         )
-    return user  # La relación user_info se cargará automáticamente gracias a SQLAlchemy
+    return user
 
 # def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado_provincia: str, alcadia: str, owner_id: int):
 #     # Verificar si el owner_id existe en la tabla users
@@ -186,32 +193,28 @@ def obtener_user_con_info(user_id: int, db: Session):
 
 def actualizar_o_crear_user_info(
     user_id: int,
-    apellido: Optional[str] = Form(None),
     telefono: Optional[str] = Form(None),
     direccion: Optional[str] = Form(None),
-    codigo_postal: Optional[int] = Form(None),  # Cambiado a Optional[int]
+    codigo_postal: Optional[int] = Form(None),
     ciudad: Optional[str] = Form(None),
     alcaldia: Optional[str] = Form(None),
     nombre_restaurante: Optional[str] = Form(None),
+    whatsapp: Optional[str] = Form(None),
     image: UploadFile = None,
     db: Session = Depends(get_db)
 ):
     """
     Actualiza o crea la información del usuario autenticado.
-    Los campos no enviados en el JSON se mantienen con su valor actual o se asignan como null.
+    Los campos no enviados en el formulario se asignan como None.
     """
-    # Obtener datos del usuario
     user = db.query(User).filter(User.id_users == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    # Buscar si ya existe un registro de UserInfo para el usuario
     user_info_record = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
 
     if user_info_record:
-        # Actualizar los campos del registro existente
         user_info_record.nombre = user.name
-        user_info_record.apellido = apellido or user_info_record.apellido
         user_info_record.email = user.email
         user_info_record.telefono = telefono or user_info_record.telefono
         user_info_record.direccion = direccion or user_info_record.direccion
@@ -219,13 +222,12 @@ def actualizar_o_crear_user_info(
         user_info_record.ciudad = ciudad or user_info_record.ciudad
         user_info_record.alcaldia = alcaldia or user_info_record.alcaldia
         user_info_record.nombre_restaurante = nombre_restaurante or user_info_record.nombre_restaurante
+        user_info_record.whatsapp = whatsapp or user_info_record.whatsapp
     else:
-        # Crear un nuevo registro de UserInfo con valores opcionales
         user_info_record = UserInfo(
             user_id=user_id,
-            user_uuid=user.uuid,  # Usar user.uuid en lugar de user.id_users
+            user_uuid=user.uuid,
             nombre=user.name,
-            apellido=apellido,
             email=user.email,
             telefono=telefono,
             direccion=direccion,
@@ -233,25 +235,19 @@ def actualizar_o_crear_user_info(
             ciudad=ciudad,
             alcaldia=alcaldia,
             nombre_restaurante=nombre_restaurante,
+            whatsapp=whatsapp
         )
         db.add(user_info_record)
     
-    # Confirmar el registro de UserInfo para obtener el id_user_info
     db.commit()
     db.refresh(user_info_record)
 
-    # Manejar la imagen si se proporciona
     if image:
-        # Validar el tipo de archivo
         if not image.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
-
-        # Guardar la imagen en el sistema de archivos
         file_path = f"static/uploadsUser/{image.filename}"
         with open(file_path, "wb") as buffer:
             buffer.write(image.file.read())
-
-        # Crear o actualizar el registro de la imagen
         image_record = db.query(ImageUser).filter(ImageUser.user_info_id == user_info_record.id_user_info).first()
         if image_record:
             image_record.file_name = image.filename
@@ -264,7 +260,6 @@ def actualizar_o_crear_user_info(
             )
             db.add(image_record)
 
-    # Guardar los cambios en la base de datos
     db.commit()
     db.refresh(user_info_record)
 

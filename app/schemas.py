@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, computed_field
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -94,11 +94,6 @@ class UserInfo(BaseModel):
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
         
-class UserWithInfo(BaseModel):
-    user_info: UserInfo | None = None  # Relación opcional con UserInfo
-
-    class Config:
-        from_attributes = True
 
 # Esquema para mostrar un usuario (sin password, para GET)
 class ShowUser(BaseModel):
@@ -324,14 +319,30 @@ class ImageUserCreate(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ImageUserResponse(BaseModel):
-    id: int | None = None
+    id: Optional[int] = None
     file_name: str
     file_path: str
     user_info_id: int
 
+    @computed_field
+    @property
+    def url(self) -> str:
+        # Ajusta la URL base según tu configuración (puedes usar una variable de entorno)
+        return f"http://127.0.0.1:8000/static/uploadsUser/{self.file_name}"
+
     class Config:
         from_attributes = True
+
+# class ImageUserResponse(BaseModel):
+#     id: int | None = None
+#     file_name: str
+#     file_path: str
+#     user_info_id: int
+
+#     class Config:
+#         from_attributes = True
 
 
 class UserInfoCreate(BaseModel):
@@ -353,7 +364,7 @@ class UserInfoCreate(BaseModel):
 class UserInfoResponse(BaseModel):
     id_user_info: int | None = None
     nombre: Optional[str] = None
-    apellido: Optional[str] = None
+    #apellido: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
@@ -361,17 +372,21 @@ class UserInfoResponse(BaseModel):
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
+    whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
     user_id: int | None = None
     user_uuid: Optional[str] = None  # Correctamente definido como str
+    image_user: Optional[ImageUserResponse] = None
 
     class Config:
         orm_mode = True  # Nota: orm_mode es para Pydantic V1; en V2 es from_attributes
 
 
-    
+class UserWithInfo(BaseModel):
+    user_info: Optional[UserInfoResponse] = None  # Cambiado de UserInfo a UserInfoResponse
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
 
 class CategoriaCreate(BaseModel):
     nombre_categoria: str

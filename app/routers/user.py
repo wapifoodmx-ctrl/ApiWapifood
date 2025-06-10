@@ -73,14 +73,14 @@ def actualizar_usuario(user_id: int, updateUser: User, db: Session = Depends(get
 
 @router.patch("/me/info", status_code=status.HTTP_200_OK, response_model=UserInfoResponse)
 async def actualizar_o_crear_user_info(
-    apellido: Optional[str] = Form(None),
     telefono: Optional[str] = Form(None),
     direccion: Optional[str] = Form(None),
-    codigo_postal: Optional[int] = Form(None),  # Corregido
+    codigo_postal: Optional[int] = Form(None),
     ciudad: Optional[str] = Form(None),
     alcaldia: Optional[str] = Form(None),
     nombre_restaurante: Optional[str] = Form(None),
-    image: UploadFile = File(None),  # Ya está correcto
+    whatsapp: Optional[str] = Form(None),
+    image: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
@@ -95,7 +95,16 @@ async def actualizar_o_crear_user_info(
 
     try:
         nueva_info = user_repo.actualizar_o_crear_user_info(
-            user_id, apellido, telefono, direccion, codigo_postal, ciudad, alcaldia, nombre_restaurante, image, db
+            user_id=user_id,
+            telefono=telefono,
+            direccion=direccion,
+            codigo_postal=codigo_postal,
+            ciudad=ciudad,
+            alcaldia=alcaldia,
+            nombre_restaurante=nombre_restaurante,
+            whatsapp=whatsapp,
+            image=image,
+            db=db
         )
         return nueva_info
     except json.JSONDecodeError:
@@ -112,22 +121,18 @@ async def actualizar_o_crear_user_info(
             detail=f"Error actualizando información del usuario: {str(e)}"
         )
 
-
-
 #------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
-# Nuevo endpoint para obtener UserInfo del usuario autenticado
 @router.get("/me/info", response_model=UserWithInfo, status_code=status.HTTP_200_OK)
 def obtener_user_con_info(
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
-):  
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
     """
     Obtiene la información del usuario autenticado junto con su UserInfo.
     """
-    usuario_con_info = user.obtener_user_con_info(current_user.id_users, db)
+    usuario_con_info = user_repo.obtener_user_con_info(current_user.id_users, db)
     if not usuario_con_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return usuario_con_info
-

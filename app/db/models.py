@@ -132,7 +132,7 @@ class UserInfo(Base):
     __tablename__ = "user_info"
     id_user_info = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String(50), nullable=True)
-    apellido = Column(String(50), nullable=True)
+    #apellido = Column(String(50), nullable=True)
     email = Column(String(50), nullable=True)
     telefono = Column(String(50), nullable=True)
     direccion = Column(String(50), nullable=True)
@@ -140,6 +140,7 @@ class UserInfo(Base):
     ciudad = Column(String(50), nullable=True)
     alcaldia = Column(String(50), nullable=True)
     nombre_restaurante = Column(String(50), nullable=True)
+    whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
 
     # Relaciones
     # Clave foránea a la tabla 'users'
