@@ -2,11 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Form
 from app.db.models import User
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
-from typing import List
+from typing import List, Optional, Optional
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User
 from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse
-from app.enums import RoleOrders, TablesEnum
+from app.enums import RoleOrders, TablesEnum, OrderStatusEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
 from app.repository.auth import get_current_user
@@ -34,19 +34,15 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
 
 @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
-    description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa disponible."
-)
+description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa disponible.")
 async def crear_orden(
     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
     quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
+    mesa_id: Optional[int] = Form(None, description="ID de la mesa a asignar (opcional, si no se especifica se asigna una disponible)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """
-    Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa disponible.
-    Los product_ids y quantities deben ser cadenas separadas por comas.
-    """
     # 1. Parsear las listas de product_ids y quantities
     try:
         product_ids_list = [int(pid) for pid in product_ids.split(",")]
@@ -78,39 +74,52 @@ async def crear_orden(
         products.append(db_product)
         product_names.append(db_product.name)
 
-    # 5. Buscar la primera mesa disponible (Libre, number != 1)
-    available_table = db.query(TablesModel).filter(
-        TablesModel.user_id == current_user.id_users,
-        TablesModel.state == TablesEnum.Libre,
-        TablesModel.number != 1  # Excluir la mesa 1 (punto de venta)
-    ).order_by(TablesModel.number.asc()).first()
-
-    if not available_table:
-        raise HTTPException(status_code=400, detail="No hay mesas disponibles para asignar (todas están ocupadas o no tienes mesas asignadas)")
+    # 5. Asignar una mesa
+    if mesa_id:
+        # Si se especifica un mesa_id, validar que exista y pertenezca al usuario
+        table = db.query(TablesModel).filter(
+            TablesModel.id_tables == mesa_id,
+            TablesModel.user_id == current_user.id_users
+        ).first()
+        if not table:
+            raise HTTPException(status_code=404, detail=f"Mesa con ID {mesa_id} no encontrada para este usuario")
+        if table.state == TablesEnum.Ocupado and table.number != 1:
+            raise HTTPException(status_code=400, detail=f"La mesa con ID {mesa_id} ya está ocupada")
+    else:
+        # Si no se especifica, buscar una mesa disponible (excluyendo mesa 1)
+        table = db.query(TablesModel).filter(
+            TablesModel.user_id == current_user.id_users,
+            TablesModel.state == TablesEnum.Libre,
+            TablesModel.number != 1
+        ).order_by(TablesModel.number.asc()).first()
+        if not table:
+            raise HTTPException(status_code=400, detail="No hay mesas disponibles para asignar (todas están ocupadas o no tienes mesas asignadas)")
 
     # 6. Calcular el total de la orden
     for db_product, qty in zip(products, quantities_list):
         total_order += float(db_product.price) * qty
 
-    # 7. Crear la orden (Orders) asociada al usuario autenticado
+    # 7. Crear la orden
     db_order = OrdersModel(
         state=RoleOrders.Ocupado,
+        order_status=OrderStatusEnum.Pending,  # Estado inicial
         date_time=datetime.utcnow(),
         total=total_order,
         orderscol="Orden creada manualmente",
         user_id=current_user.id_users,
         product_name=", ".join(product_names),
-        mesa_id=available_table.id_tables  # Asignar la mesa encontrada
+        mesa_id=table.id_tables
     )
     db.add(db_order)
 
-    # 8. Actualizar el estado de la mesa a Ocupado
-    available_table.state = TablesEnum.Ocupado
+    # 8. Actualizar el estado de la mesa a Ocupado (excepto si es mesa 1)
+    if table.number != 1:
+        table.state = TablesEnum.Ocupado
     db.commit()
     db.refresh(db_order)
-    db.refresh(available_table)
+    db.refresh(table)
 
-    # 9. Crear los detalles de pedido (OrdersDetails) para cada producto
+    # 9. Crear los detalles de pedido
     for db_product, qty in zip(products, quantities_list):
         unit_price = float(db_product.price)
         subtotal = qty * unit_price
@@ -125,14 +134,12 @@ async def crear_orden(
         db.add(db_order_detail)
 
     db.commit()
-
-    # 10. Refrescar la orden para incluir los detalles y el número de la mesa
     db.refresh(db_order)
 
-    # Crear una instancia del esquema manualmente para incluir mesa_number
+    # 10. Crear respuesta con el número de mesa
     order_response = OrderCreateResponse.from_orm(db_order)
-    order_response.mesa_id = db_order.mesa_id  # Asegurar que mesa_id se incluya
-    order_response.mesa_number = available_table.number  # Añadir el número de la mesa
+    order_response.mesa_id = db_order.mesa_id
+    order_response.mesa_number = table.number
 
     return order_response
 #------------------------------------------

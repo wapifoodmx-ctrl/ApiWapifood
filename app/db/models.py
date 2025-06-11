@@ -8,6 +8,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from app.schemas import PlanType
 from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount, OrderStatusEnum
 from datetime import datetime
+import uuid
 
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
@@ -98,6 +99,7 @@ class User(Base):
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Campo para la fecha de creación
+    uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
     # Relaciones
     orders = relationship("Orders", back_populates="user")
@@ -161,7 +163,7 @@ class Orders(Base):
     date_time = Column(DateTime)
     total = Column(Decimal)
     orderscol = Column(String(50))
-    product_name = Column(String(100))
+    product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     # Relaciones
     user = relationship("User", back_populates="orders") #
