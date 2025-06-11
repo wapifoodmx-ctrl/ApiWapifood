@@ -89,7 +89,7 @@ class Image(Base):
 #     #categorias = relationship("Categoria", back_populates="restaurante")
 #     owner = relationship("User", back_populates="restaurantes_propios", foreign_keys=[owner_id])
 
-
+#alembic revision --autogenerate -m "Se modifica tables y se añade tables_details"
 
 class User(Base):
     __tablename__ = "users"
@@ -101,6 +101,7 @@ class User(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Campo para la fecha de creación
     uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
+    uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     # Relaciones
     orders = relationship("Orders", back_populates="user")
     payments = relationship("Payments", back_populates="user")
@@ -132,17 +133,21 @@ class UserInfo(Base):
     __tablename__ = "user_info"
     id_user_info = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String(50), nullable=True)
-    apellido = Column(String(50), nullable=True)
+    #apellido = Column(String(50), nullable=True)
     email = Column(String(50), nullable=True)
     telefono = Column(String(50), nullable=True)
     direccion = Column(String(50), nullable=True)
     codigo_postal = Column(Integer, nullable=True)
     ciudad = Column(String(50), nullable=True)
     alcaldia = Column(String(50), nullable=True)
+    nombre_restaurante = Column(String(50), nullable=True)
+    whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
 
     # Relaciones
     # Clave foránea a la tabla 'users'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False, unique=True)  # unique=True asegura relación 1:1
+    user_uuid = Column(String(50), nullable=True, unique=True)
+    
     # Relación inversa con User
     user = relationship("User", back_populates="user_info")
     image_user = relationship("ImageUser", back_populates="user_info", uselist=False)  # Relación 1:1
@@ -159,12 +164,13 @@ class Orders(Base):
     id_orders = Column(Integer, primary_key=True, autoincrement=True)
     mesa_id = Column(Integer, ForeignKey("tables.id_tables"))  # Clave foránea a la tabla 'tables'
     state = Column(SQLAlchemyEnum(RoleOrders), nullable=False)
-    order_status = Column(SQLAlchemyEnum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.Pendiente)  # Nuevo campo para el estado del pedido
+    order_status = Column(String(20), SQLAlchemyEnum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.Pendiente)  # Nuevo campo para el estado del pedido
     date_time = Column(DateTime)
     total = Column(Decimal)
     orderscol = Column(String(50))
     product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
+    order_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
@@ -207,7 +213,7 @@ class TableDetails(Base):
 class Products(Base):
     __tablename__ = "products"
     id_products = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50))
+    name = Column(String(1500))
     description = Column(String(500))
     price = Column(Decimal(10, 2))
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna

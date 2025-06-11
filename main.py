@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import FormData
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 # Lista de clientes WebSocket con user_id
@@ -55,11 +56,30 @@ app.add_middleware(
     allow_headers=["*"],     # Headers permitidos
 )
 
+# @app.exception_handler(RequestValidationError)
+# async def validation_exception_handler(request: Request, exc: RequestValidationError):
+#     return JSONResponse(
+#         status_code=422,
+#         content={"detail": exc.errors(), "body": exc.body},
+#     )
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+    # Convertir FormData a un diccionario si es necesario
+    body = None
+    if isinstance(exc.body, FormData):
+        body = {key: value for key, value in exc.body.items()}
+    else:
+        body = exc.body
+
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "body": exc.body},
+        content={
+            "detail": errors,
+            "body": body
+        },
     )
 
 if __name__ == "__main__":

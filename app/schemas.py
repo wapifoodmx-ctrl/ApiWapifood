@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, computed_field
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -87,16 +87,13 @@ class UserInfo(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
+    user_uuid: Optional[str] = None  # UUID del usuario (opcional)
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
         
-class UserWithInfo(BaseModel):
-    user_info: UserInfo | None = None  # Relación opcional con UserInfo
-
-    class Config:
-        from_attributes = True
 
 # Esquema para mostrar un usuario (sin password, para GET)
 class ShowUser(BaseModel):
@@ -148,9 +145,26 @@ class Orders(BaseModel):
         from_attributes = True
 
 # Nuevo esquema para la respuesta de creación de órdenes
-class OrderCreateResponse(Orders):
-    mesa_id: Optional[int] = None  # ID de la mesa asignada
-    mesa_number: Optional[int] = None  # Número de la mesa asignada
+# class OrderCreateResponse(Orders):
+#     mesa_id: Optional[int] = None  # ID de la mesa asignada
+#     mesa_number: Optional[int] = None  # Número de la mesa asignada
+
+#     class Config:
+#         from_attributes = True
+
+class OrderCreateResponse(BaseModel):
+    id_orders: int | None = None
+    state: RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
+    date_time: datetime
+    total: Decimal
+    orderscol: str
+    user_id: int
+    product_name: str
+    order_details: List[OrdersDetailsSchema]
+    mesa_id: int  # ID de la mesa asignada
+    mesa_number: int  | None = None # Número de la mesa asignada
+    order_uuid: str  # Nuevo campo para el UUID único de la orden
 
     class Config:
         from_attributes = True
@@ -164,6 +178,7 @@ class OrdersResponse(BaseModel):
     total: Decimal  # Cambiar a Decimal para coincidir con OrdersModel
     orderscol: str
     user_id: int | None = None
+    order_uuid: str  # Nuevo campo para el UUID único de la orden
     product_name: str
     details: List[OrdersDetailsSchema]  # Cambiar a "details" para mantener consistencia
 
@@ -304,14 +319,30 @@ class ImageUserCreate(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ImageUserResponse(BaseModel):
-    id: int | None = None
+    id: Optional[int] = None
     file_name: str
     file_path: str
     user_info_id: int
 
+    @computed_field
+    @property
+    def url(self) -> str:
+        # Ajusta la URL base según tu configuración (puedes usar una variable de entorno)
+        return f"http://127.0.0.1:8000/static/uploadsUser/{self.file_name}"
+
     class Config:
         from_attributes = True
+
+# class ImageUserResponse(BaseModel):
+#     id: int | None = None
+#     file_name: str
+#     file_path: str
+#     user_info_id: int
+
+#     class Config:
+#         from_attributes = True
 
 
 class UserInfoCreate(BaseModel):
@@ -323,6 +354,9 @@ class UserInfoCreate(BaseModel):
     codigo_postal: int | None = None
     ciudad: str | None = None 
     alcaldia: str | None = None
+    nombre_restaurante: str | None = None  # Nombre del restaurante asociado
+    user_id: Optional[int] = None
+    user_uuid: Optional[str] = None  # Correcto como str
 
     class Config:
         from_attributes = True
@@ -330,16 +364,29 @@ class UserInfoCreate(BaseModel):
 class UserInfoResponse(BaseModel):
     id_user_info: int | None = None
     nombre: Optional[str] = None
-    apellido: Optional[str] = None
+    #apellido: Optional[str] = None
     email: Optional[str] = None
     telefono: Optional[str] = None
     direccion: Optional[str] = None
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
+    whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
+    user_id: int | None = None
+    user_uuid: Optional[str] = None  # Correctamente definido como str
+    image_user: Optional[ImageUserResponse] = None
 
     class Config:
-        orm_mode = True
+        orm_mode = True  # Nota: orm_mode es para Pydantic V1; en V2 es from_attributes
+
+
+class UserWithInfo(BaseModel):
+    user_info: Optional[UserInfoResponse] = None  # Cambiado de UserInfo a UserInfoResponse
+
+    class Config:
+        from_attributes = True
+
 
 class CategoriaCreate(BaseModel):
     nombre_categoria: str
@@ -416,6 +463,10 @@ class OrderDetailCreate(BaseModel):
 
 class OrdersCreate(BaseModel):
     details: List[OrderDetailCreate]
+    mesa_id: int
+
+    class Config:
+        from_attributes = True
 
 class OrderDetailResponse(BaseModel):
     product_id: int
@@ -496,3 +547,14 @@ class PaymentRequest(BaseModel):
 class SubscriptionRequest(BaseModel):
     plan: PlanType
     #order_id: str
+
+
+class OrderFinalizeResponse(BaseModel):
+    message: str
+    order_id: int
+    mesa_id: int
+    order_status: OrderStatusEnum
+    mesa_state: TablesEnum
+
+    class Config:
+        from_attributes = True

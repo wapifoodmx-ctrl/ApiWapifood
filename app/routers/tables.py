@@ -92,9 +92,18 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #---------------------------------------
 #---------------------------------------
 
+"""
+Se agregó una condición payment.subscription_end_date and para asegurarse de que solo se realice la comparación si 
+subscription_end_date no es None. Si es None, la condición not payment ya manejará el caso de un pago inexistente o no válido.
+Esto evita el TypeError y permite que el endpoint funcione incluso si subscription_end_date no se ha establecido aún.
+
+"""
+
 @router.post("/details", status_code=status.HTTP_201_CREATED,
-description="Crea los detalles de mesas para un usuario basado en su suscripción."
+    description="Crea los detalles de mesas para un usuario basado en su suscripción."
 )
+
+
 async def create_table_details(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -102,11 +111,15 @@ async def create_table_details(
     # 1. Verificar la suscripción activa
     payment = db.query(Payments).filter(
         Payments.user_id == current_user.id_users,
-        Payments.status == "completed"
-    ).order_by(Payments.date.desc()).first()
-
-    if not payment or payment.subscription_end_date < datetime.utcnow():
+        Payments.status == "completed",
+        Payments.subscription_end_date.isnot(None)  # Asegura que subscription_end_date no sea None
+        ).order_by(Payments.date.desc()).first()
+    
+    
+    # Verificar si hay un pago y si la suscripción está activa
+    if not payment or (payment.subscription_end_date and payment.subscription_end_date < datetime.utcnow()):
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
+    print(f"Payment: {payment.__dict__ if payment else 'None'}")
 
     # 2. Determinar el número de mesas según el plan
     plan_mesas = {
@@ -139,7 +152,6 @@ async def create_table_details(
     db.commit()
 
     return {"message": f"Se han creado {mesas} mesas para el usuario", "mesas": mesas}
-
 
 #---------------------------------------
 #---------------------------------------
