@@ -218,7 +218,9 @@ class ImageResponse(BaseModel):
     @property
     def url(self):
         # Construye la URL completa (ajusta según tu configuración)
-        return f"http://192.168.1.69/static/uploads/{self.file_name}"
+        return f"http://189.147.92.232:8000/static/uploads/{self.file_name}"
+        
+        #return f"http://192.168.1.69/static/uploads/{self.file_name}"
 
     class Config:
         orm_mode = True
@@ -320,6 +322,9 @@ class ImageUserCreate(BaseModel):
         from_attributes = True
 
 
+import os
+
+
 class ImageUserResponse(BaseModel):
     id: Optional[int] = None
     file_name: str
@@ -329,8 +334,8 @@ class ImageUserResponse(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        # Ajusta la URL base según tu configuración (puedes usar una variable de entorno)
-        return f"http://127.0.0.1:8000/static/uploadsUser/{self.file_name}"
+        base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")  # Alinear con products.py
+        return f"{base_url}/static/uploads/{self.file_name}"
 
     class Config:
         from_attributes = True

@@ -14,8 +14,13 @@ import json
 import os
 import shutil
 from app.db.models import  User
+import logging
 
-UPLOAD_DIR = "static/uploadsUser"
+
+
+logger = logging.getLogger(__name__)
+UPLOAD_DIR = "app/static/uploads"  # Alinear con products.py
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def crear_usuario(usuario, db: Session): 
     usuario = usuario.dict()
@@ -79,78 +84,7 @@ def actualizar_usuarios(user_id, updateUser, db: Session):
         detail="Usuario no encontrado"
     )
 
-# def crear_user_info(user_id: int, user_info_str: str, image: UploadFile | None, db: Session):
-#     try:
-#         # Parsear el user_info de cadena JSON a un objeto
-#         user_info_dict = json.loads(user_info_str)
-#         user_info = UserInfoCreate(**user_info_dict)
 
-#         # Verificar si ya existe un UserInfo para este usuario
-#         existing_info = db.query(UserInfo).filter(UserInfo.user_id == user_id).first()
-#         if existing_info:
-#             raise HTTPException(
-#                 status_code=409,
-#                 detail="Ya existe información personal para este usuario"
-#             )
-
-#         # Crear UserInfo
-#         nueva_info = UserInfo(
-#             nombre=user_info.nombre,
-#             apellido=user_info.apellido,
-#             email=user_info.email,
-#             telefono=user_info.telefono,
-#             direccion=user_info.direccion,
-#             codigo_postal=user_info.codigo_postal,
-#             ciudad=user_info.ciudad,
-#             alcaldia=user_info.alcaldia,
-#             user_id=user_id
-#         )
-#         db.add(nueva_info)
-#         db.commit()
-#         db.refresh(nueva_info)
-
-#         # Manejar la imagen si se proporcionó
-#         if image:
-#             # Validar extensión
-#             allowed_extensions = {".jpg", ".jpeg", ".png"}
-#             file_extension = os.path.splitext(image.filename)[1].lower()
-#             if file_extension not in allowed_extensions:
-#                 raise HTTPException(status_code=400, detail="Solo se permiten imágenes JPG o PNG")
-
-#             # Asegurarse de que la carpeta exista
-#             if not os.path.exists(UPLOAD_DIR):
-#                 os.makedirs(UPLOAD_DIR)
-
-#             # Generar un nombre único
-#             unique_filename = f"{user_id}_{int(datetime.now().timestamp())}{file_extension}"
-#             file_path = os.path.join(UPLOAD_DIR, unique_filename)
-
-#             # Guardar la imagen
-#             with open(file_path, "wb") as buffer:
-#                 shutil.copyfileobj(image.file, buffer)
-
-#             # Crear registro en image_user
-#             nueva_imagen = ImageUser(
-#                 file_name=unique_filename,
-#                 file_path=file_path,
-#                 user_info_id=nueva_info.id_user_info
-#             )
-#             db.add(nueva_imagen)
-#             db.commit()
-#             db.refresh(nueva_imagen)
-
-#         return nueva_info
-
-#     except json.JSONDecodeError:
-#         raise  # Reenviar el error al endpoint
-#     except ValidationError as e:
-#         raise  # Reenviar el error al endpoint
-#     except Exception as e:
-#         db.rollback()
-#         raise HTTPException(
-#             status_code=500,
-#             detail=f"Error creando información del usuario: {e}"
-#         )
 
 def obtener_user_con_info(user_id: int, db: Session):
     user = (
@@ -203,10 +137,6 @@ def actualizar_o_crear_user_info(
     image: UploadFile = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Actualiza o crea la información del usuario autenticado.
-    Los campos no enviados en el formulario se asignan como None.
-    """
     user = db.query(User).filter(User.id_users == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -245,9 +175,10 @@ def actualizar_o_crear_user_info(
     if image:
         if not image.content_type.startswith("image/"):
             raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
-        file_path = f"static/uploadsUser/{image.filename}"
+        file_path = f"{UPLOAD_DIR}/{image.filename}"
         with open(file_path, "wb") as buffer:
             buffer.write(image.file.read())
+        logger.debug(f"Imagen guardada en {file_path}, tamaño: {os.path.getsize(file_path)} bytes")
         image_record = db.query(ImageUser).filter(ImageUser.user_info_id == user_info_record.id_user_info).first()
         if image_record:
             image_record.file_name = image.filename
