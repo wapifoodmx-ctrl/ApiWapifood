@@ -70,10 +70,12 @@ class Image(Base):
     file_name = Column(String(255), nullable=False)
     file_path = Column(String(255), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Relacionamos con la tabla de usuarios
-    product_id = Column(Integer, ForeignKey("products.id_products"), nullable=False)  # Clave foránea a la tabla 'products'
+    #product_id = Column(Integer, ForeignKey("products.id_products"), nullable=False)  # Clave foránea a la tabla 'products'
+    product_id = Column(Integer, ForeignKey("products.id_products", ondelete="CASCADE"), nullable=True)  # Permitir NULL con CASCADE
 
     user = relationship("User", back_populates="images")
     product = relationship("Products", back_populates="images")  # Relación con Products
+    
 
 # class Restaurante(Base):
 #     __tablename__= "restaurante"
@@ -225,7 +227,8 @@ class Products(Base):
     category = relationship("Categoria", back_populates="productos")
     owner = relationship("User", back_populates="products")  # Relación inversa
     order_details = relationship("OrdersDetails", back_populates="product")
-    images = relationship("Image", back_populates="product")  # Relación inversa
+    #images = relationship("Image", back_populates="product")  # Relación inversa
+    images = relationship("Image", back_populates="product", cascade="all, delete-orphan")  # Añadir cascade
     #restaurante = relationship("Restaurante", back_populates="products")  # Relación inversa
 
     @hybrid_property

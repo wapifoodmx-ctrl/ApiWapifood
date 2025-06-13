@@ -40,6 +40,9 @@ app.include_router(payments.router)
 # Montar el directorio de archivos estáticos
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+# Montar explícitamente el subdirectorio uploadsUser
+#app.mount("/staticUser/uploadsUser", StaticFiles(directory="staticUser/uploadsUser"), name="uploadsUser")
+
 # Configuración de CORS
 origins = [
     "http://localhost:3000",  # Origen de tu frontend

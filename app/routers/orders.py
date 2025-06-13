@@ -305,6 +305,49 @@ def obtenemos_orders_details(
 #------------------------------------------
 #------------------------------------------
 
+@router.get("/final/{order_uuid}", response_model=List[dict], status_code=status.HTTP_200_OK)
+def obtener_ordenes_por_uuid(
+    order_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Obtener todas las órdenes asociadas al UUID proporcionado para este usuario
+    ordenes = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).all()
+    
+    if not ordenes:
+        raise HTTPException(status_code=404, detail="No se encontraron órdenes para este UUID")
+    
+    # Calcular la orden final (suma de totals, por ejemplo)
+    ordenes_dict = []
+    total_final = 0.0
+    for orden in ordenes:
+        orden_dict = {
+            "id_orders": orden.id_orders,
+            "mesa_id": orden.mesa_id,
+            "state": orden.state,
+            "date_time": orden.date_time,
+            "total": float(orden.total) if orden.total else 0.0,
+            "product_name": orden.product_name
+        }
+        ordenes_dict.append(orden_dict)
+        total_final += float(orden.total) if orden.total else 0.0
+    
+    return [{"ordenes": ordenes_dict, "total_final": total_final}]
+
+
+
+
+
+
+
+
+
+#------------------------------------------
+#------------------------------------------
+
 @router.get("/summary", response_model=dict, status_code=status.HTTP_200_OK)
 def get_order_summary(
     db: Session = Depends(get_db),
@@ -377,23 +420,5 @@ async def finalizar_orden(
         order_status=db_order.order_status,
         mesa_state=db_table.state
     )
-
-# @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
-# def obtenemos_orders_details(
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     """Obtiene todas las órdenes del usuario autenticado, incluyendo sus detalles."""
-#     try:
-#         # Obtener todas las órdenes del usuario autenticado
-#         orders = db.query(OrdersModel).filter(OrdersModel.user_id == current_user.id_users).all()
-        
-#         if not orders:
-#             raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario")
-
-#         # Devolver las órdenes con sus detalles
-#         return [OrdersResponse.from_orm(order) for order in orders]
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=f"Error obteniendo las órdenes: {str(e)}")
 
 
