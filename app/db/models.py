@@ -143,6 +143,7 @@ class UserInfo(Base):
     alcaldia = Column(String(50), nullable=True)
     nombre_restaurante = Column(String(50), nullable=True)
     whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
+    horario = Column(String(50), nullable=True)  # Nuevo campo para horario
 
     # Relaciones
     # Clave foránea a la tabla 'users'

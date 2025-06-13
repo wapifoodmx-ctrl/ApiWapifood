@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
-from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse
+from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
 from typing import List
 from app.db.database import get_db
 from sqlalchemy.orm import Session
@@ -80,6 +80,7 @@ async def actualizar_o_crear_user_info(
     alcaldia: Optional[str] = Form(None),
     nombre_restaurante: Optional[str] = Form(None),
     whatsapp: Optional[str] = Form(None),
+    horario: Optional[str] = Form(None),
     image: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
@@ -103,6 +104,7 @@ async def actualizar_o_crear_user_info(
             alcaldia=alcaldia,
             nombre_restaurante=nombre_restaurante,
             whatsapp=whatsapp,
+            horario=horario,
             image=image,
             db=db
         )
@@ -136,3 +138,21 @@ def obtener_user_con_info(
     if not usuario_con_info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     return usuario_con_info
+
+
+#------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+
+@router.get("/info/{user_uuid}", response_model=UserInfoByUUIDResponse, status_code=status.HTTP_200_OK)
+def obtener_info_por_uuid(
+    user_uuid: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene la información de un usuario (telefono, direccion, nombre_restaurante, whatsapp, image)
+    a partir de su user_uuid.
+    """
+    info = user_repo.obtener_info_por_uuid(user_uuid, db)
+    if not info:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Información de usuario no encontrada")
+    return info

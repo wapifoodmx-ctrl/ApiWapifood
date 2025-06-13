@@ -378,6 +378,7 @@ class UserInfoResponse(BaseModel):
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
+    horario: Optional[str] = None  # Nuevo campo para horario
     user_id: int | None = None
     user_uuid: Optional[str] = None  # Correctamente definido como str
     image_user: Optional[ImageUserResponse] = None
@@ -388,6 +389,21 @@ class UserInfoResponse(BaseModel):
 
 class UserWithInfo(BaseModel):
     user_info: Optional[UserInfoResponse] = None  # Cambiado de UserInfo a UserInfoResponse
+
+    class Config:
+        from_attributes = True
+
+
+class UserInfoByUUIDResponse(BaseModel):
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    nombre_restaurante: Optional[str] = None
+    whatsapp: Optional[str] = None
+    image: Optional[str] = None
+    direccion: Optional[str] = None
+    codigo_postal: Optional[int] = None
+    ciudad: Optional[str] = None
+    alcaldia: Optional[str] = None
 
     class Config:
         from_attributes = True
