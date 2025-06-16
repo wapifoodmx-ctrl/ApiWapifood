@@ -490,7 +490,7 @@ class OrdersCreate(BaseModel):
         from_attributes = True
 
 class OrderDetailResponse(BaseModel):
-    product_id: int
+    #product_id: int
     quantity: int
     unit_price: float = 0.0
     subtotal: float
@@ -501,11 +501,14 @@ class OrderDetailResponse(BaseModel):
 
 class OrdersResponse(BaseModel):
     id_orders: int
-    state: str
+    state: RoleOrders  # Cambiado de str a RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
-    total: float
-    product_name: str = "Sin dato" # Asegúrate de incluir este campo
-    #payment_method: str  # Nuevo campo
+    total: Decimal  # Cambiado de float a Decimal para precisión
+    orderscol: str
+    user_id: Optional[int] = None
+    order_uuid: str
+    product_name: str = "Sin dato"
     details: List[OrderDetailResponse]
 
     class Config:

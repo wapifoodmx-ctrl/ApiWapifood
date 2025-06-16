@@ -281,16 +281,18 @@ def obtenemos_orders_details(
         order_dict = {
             "id_orders": order.id_orders,
             "state": order.state,
+            "order_status": order.order_status,  # Agregado
             "date_time": order.date_time,
-            "total": order.total or 0.0,  # Valor por defecto si es None
-            "orderscol": order.orderscol or "Sin descripción",
-            "user_id": order.user_id,
-            "product_name": order.product_name or "Sin nombre",  # Valor por defecto
+            "total": float(order.total) if order.total is not None else 0.0,
+            "orderscol": order.orderscol,  # Requerido por el esquema
+            "user_id": order.user_id,  # Requerido por el esquema
+            "order_uuid": order.order_uuid,  # Requerido por el esquema
+            "product_name": order.product_name or "Sin nombre",
             "details": [
                 {
-                    "id_orders_details": detail.id_orders_details,
-                    "order_id": detail.order_id,
-                    "product_id": detail.product_id,
+                    #"id_orders_details": detail.id_orders_details,
+                    #"order_id": detail.order_id,
+                    #"product_id": detail.product_id,
                     "quantity": detail.quantity,
                     "unit_price": detail.unit_price if detail.unit_price is not None else 0.0,  # Valor por defecto
                     "subtotal": detail.subtotal if detail.subtotal is not None else 0.0  # Valor por defecto
