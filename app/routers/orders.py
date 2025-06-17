@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 import uuid
 from app.db.database import get_db
-from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User
+from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
 from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse
-from app.enums import RoleOrders, TablesEnum, OrderStatusEnum
+from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
 from app.repository.auth import get_current_user
@@ -259,24 +259,19 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #------------------------------------------
 
 @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
-    description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa especificada. La mesa con ID 1 siempre permanece en estado Libre. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID."
-)
+    description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa especificada. La mesa con número 1 siempre permanece en estado Libre. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID.")
 async def crear_orden(
     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
     quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
-    mesa_id: int = Form(..., description="ID de la mesa a asignar a la orden (la mesa con ID 1 siempre permanece disponible)"),
-    order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID."),  # UUID opcional
+    table_number: int = Form(..., description="Número de la mesa a asignar a la orden (la mesa con número 1 siempre permanece disponible)"),
+    order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    """
-    Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa especificada.
-    Los product_ids y quantities deben ser cadenas separadas por comas.
-    La mesa con ID 1 siempre permanece en estado Libre, incluso al asignarse a una orden.
-    El order_uuid identifica la orden y permite rastrear comandas; se genera automáticamente si no se proporciona o es vacío.
-    Para pedidos adicionales, usa el mismo UUID de una orden previa de la misma mesa.
-    """
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+
     # 1. Parsear las listas de product_ids y quantities
     try:
         product_ids_list = [int(pid) for pid in product_ids.split(",")]
@@ -295,41 +290,65 @@ async def crear_orden(
         if qty <= 0:
             raise HTTPException(status_code=400, detail="Todas las cantidades deben ser mayores que 0")
 
-    # 4. Verificar que la mesa exista y pertenezca al usuario autenticado
+    # 4. Validar la suscripción activa
+    payment = db.query(Payments).filter(
+        Payments.user_id == current_user.id_users,
+        Payments.status == PaymentStatus.COMPLETED,
+        Payments.subscription_end_date >= datetime.utcnow()
+    ).order_by(Payments.date.desc()).first()
+    if not payment:
+        raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
+
+    logging.debug(f"payment.amount: {payment.amount}, type: {type(payment.amount)}")
+
+    # 5. Determinar el número máximo de mesas según el monto de la suscripción
+    subscription_mesas = {
+        SubscriptionAmount.PLAN_100.value: 1,
+        SubscriptionAmount.PLAN_200.value: 16,
+        SubscriptionAmount.PLAN_300.value: 26
+    }
+    try:
+        amount_float = float(payment.amount) if payment.amount else 0.0
+    except (TypeError, ValueError) as e:
+        logging.error(f"Error convirtiendo payment.amount: {payment.amount}, error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar el monto de la suscripción")
+    max_mesas = subscription_mesas.get(amount_float, 0)
+    logging.debug(f"amount_float: {amount_float}, max_mesas: {max_mesas}")
+    if max_mesas == 0:
+        raise HTTPException(status_code=400, detail=f"Monto de suscripción no reconocido: {amount_float}")
+    if table_number < 1 or table_number > max_mesas:
+        raise HTTPException(status_code=400, detail=f"El número de mesa debe estar entre 1 y {max_mesas}")
+
+    # 6. Verificar que la mesa exista y pertenezca al usuario autenticado
     db_table = db.query(TablesModel).filter(
-        TablesModel.id_tables == mesa_id,
+        TablesModel.number == table_number,
         TablesModel.user_id == current_user.id_users
     ).first()
     if not db_table:
-        raise HTTPException(status_code=404, detail=f"Mesa con ID {mesa_id} no encontrada o no te pertenece")
-    
-    # 5. Determinar el order_uuid
+        raise HTTPException(status_code=404, detail=f"Mesa con número {table_number} no encontrada o no te pertenece")
+
+    # 7. Determinar el order_uuid
     if order_uuid is None or order_uuid == "":
-        # Generar un nuevo UUID único
-        while True:
-            new_uuid = str(uuid.uuid4())
-            if not db.query(OrdersModel).filter(OrdersModel.order_uuid == new_uuid).first():
-                order_uuid = new_uuid
-                break
+        if db_table.state == TablesEnum.Ocupado and table_number != 1:
+            latest_order = db.query(OrdersModel).filter(
+                OrdersModel.mesa_id == db_table.id_tables,
+                OrdersModel.state == RoleOrders.Ocupado
+            ).order_by(OrdersModel.date_time.desc()).first()
+            order_uuid = latest_order.order_uuid if latest_order else str(uuid.uuid4())
+        else:
+            order_uuid = str(uuid.uuid4())
     else:
-        # Validar que el UUID proporcionado sea válido
         try:
             uuid.UUID(order_uuid)
         except ValueError:
             raise HTTPException(status_code=400, detail="El order_uuid proporcionado no es válido")
-        # Verificar si el UUID ya existe
         existing_order = db.query(OrdersModel).filter(
             OrdersModel.order_uuid == order_uuid
         ).first()
-        if existing_order:
-            if existing_order.mesa_id != mesa_id:
-                raise HTTPException(status_code=400, detail="El order_uuid proporcionado ya está en uso para otra mesa")
-            # Si existe y es de la misma mesa, permitir su reutilización
-        else:
-            # Si no existe, aceptarlo como un nuevo UUID
-            pass
+        if existing_order and existing_order.mesa_id != db_table.id_tables:
+            raise HTTPException(status_code=400, detail="El order_uuid proporcionado ya está en uso para otra mesa")
 
-    # 6. Verificar que los productos existan y pertenezcan al usuario autenticado
+    # 8. Verificar que los productos existan y pertenezca al usuario autenticado
     products = []
     total_order = 0.0
     product_names = []
@@ -342,13 +361,13 @@ async def crear_orden(
         products.append(db_product)
         product_names.append(db_product.name)
 
-    # 7. Calcular el total de la orden
+    # 9. Calcular el total de la orden
     for db_product, qty in zip(products, quantities_list):
         total_order += float(db_product.price) * qty
 
-    # 8. Crear la orden (Orders) asociada al usuario autenticado
+    # 10. Crear la orden (Orders) asociada al usuario autenticado
     db_order = OrdersModel(
-        mesa_id=mesa_id,
+        mesa_id=db_table.id_tables,
         state=RoleOrders.Ocupado,
         order_status=OrderStatusEnum.Pendiente,
         date_time=datetime.utcnow(),
@@ -356,22 +375,21 @@ async def crear_orden(
         orderscol="Orden creada manualmente",
         user_id=current_user.id_users,
         product_name=", ".join(product_names),
-        order_uuid=order_uuid  # Usar el UUID generado o proporcionado
+        order_uuid=order_uuid
     )
     db.add(db_order)
 
-    # 9. Actualizar el estado de la mesa a Ocupado solo si no es la mesa 1
-    if db_table.state == TablesEnum.Libre and mesa_id != 1:
+    # 11. Actualizar el estado de la mesa a Ocupado solo si no es la mesa número 1
+    if db_table.state == TablesEnum.Libre and table_number != 1:
         db_table.state = TablesEnum.Ocupado
     db.commit()
     db.refresh(db_order)
     db.refresh(db_table)
 
-    # 10. Crear los detalles de pedido (OrdersDetails) para cada producto
+    # 12. Crear los detalles de pedido (OrdersDetails) para cada producto
     for db_product, qty in zip(products, quantities_list):
         unit_price = float(db_product.price)
         subtotal = qty * unit_price
-
         db_order_detail = OrdersDetailsModel(
             order_id=db_order.id_orders,
             product_id=db_product.id_products,
@@ -383,14 +401,14 @@ async def crear_orden(
 
     db.commit()
 
-    # 11. Refrescar la orden para incluir los detalles y el número de la mesa
+    # 13. Refrescar la orden para incluir los detalles y el número de la mesa
     db.refresh(db_order)
 
     # Crear una instancia del esquema manualmente para incluir mesa_number
     order_response = OrderCreateResponse.from_orm(db_order)
     order_response.mesa_id = db_order.mesa_id
     order_response.mesa_number = db_table.number
-    order_response.order_uuid = db_order.order_uuid  # Incluir el UUID en la respuesta
+    order_response.order_uuid = db_order.order_uuid
 
     return order_response
 
@@ -566,3 +584,47 @@ async def finalizar_orden(
     )
 
 
+#------------------------------------------
+#------------------------------------------
+
+@router.put("/orders/{order_uuid}/cambio_dtatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
+async def finalizar_orden(
+    order_uuid: str,
+    order_status: OrderStatusEnum,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_order = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).first()
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Orden con UUID {order_uuid} no encontrada o no te pertenece")
+
+    if not db_order.mesa_id:
+        raise HTTPException(status_code=400, detail="La orden no está asociada a una mesa")
+    
+    db_table = db.query(TablesModel).filter(TablesModel.id_tables == db_order.mesa_id).first()
+    if not db_table:
+        raise HTTPException(status_code=400, detail="La mesa no existe")
+    
+    # Verificar si la orden ya está finalizada o cancelada
+    if db_order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
+        raise HTTPException(status_code=400, detail="La orden ya ha sido finalizada o cancelada")
+
+    db_order.order_status = order_status
+    if order_status == OrderStatusEnum.Finalizado:
+        # Solo liberar la mesa si el estado es Finalizado
+        db_table.state = TablesEnum.Libre
+
+    db.commit()
+    db.refresh(db_order)
+    db.refresh(db_table)
+
+    return OrderFinalizeResponse(
+        message="Cambio de estado de orden realizado con éxito",
+        order_id=db_order.id_orders,  # Incluir id_orders en la respuesta
+        mesa_id=db_order.mesa_id,
+        order_status=db_order.order_status,
+        mesa_state=db_table.state
+    )
