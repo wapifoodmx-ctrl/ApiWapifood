@@ -198,6 +198,29 @@ class Tables(BaseModel):
         from_attributes = True
 
 
+class OrderDetailItem(BaseModel):
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    subtotal: Decimal
+
+    class Config:
+        from_attributes = True
+
+class OrderDetailsByUUIDResponse(BaseModel):
+    restaurant_name: str
+    order_uuid: str
+    date_time: datetime
+    state: RoleOrders
+    order_status: OrderStatusEnum
+    products: List[OrderDetailItem]
+    total: Decimal
+    metodo_pago: PaymentMethodEnum
+
+    class Config:
+        from_attributes = True
+
+
 # Esquema para crear un producto (con campos adicionales)
 class ProductsCreate(BaseModel):
     name: str | None = None
@@ -218,7 +241,7 @@ class ImageResponse(BaseModel):
     @property
     def url(self):
         # Construye la URL completa (ajusta según tu configuración)
-        return f"http://189.147.63.88:8000/static/uploads/{self.file_name}"
+        return f"https://comandapp-api.h-dev.xyz/static/uploads/{self.file_name}"
         
         #return f"http://192.168.1.69/static/uploads/{self.file_name}"
 
@@ -334,13 +357,13 @@ class ImageUserResponse(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        base_url = os.getenv("BASE_URL", "http://189.147.63.88:8000")  # Alinear con products.py
+        base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")  # Alinear con products.py
         return f"{base_url}/static/uploads/{self.file_name}"
 
     class Config:
         from_attributes = True
 
-        #http://189.147.63.88:8000
+        #https://comandapp-api.h-dev.xyz
         #https://comandapp-api.h-dev.xyz
 
 # class ImageUserResponse(BaseModel):

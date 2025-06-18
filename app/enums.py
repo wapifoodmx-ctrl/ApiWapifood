@@ -66,3 +66,10 @@ class OrderStatusEnum(str, Enum):
     Cancelado = "Cancelado"
     Completado = "Completado"
     Finalizado = "Finalizado"
+
+
+class PagosEnOrders(str, Enum):
+    Efectivo = "Efectivo"
+    Tarjeta = "Tarjeta"
+
+    

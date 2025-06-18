@@ -3,11 +3,12 @@ from app.db.models import User
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from typing import List
-import uuid
+import logging
+from uuid import uuid4, UUID
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse
-from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse
+from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
 from app.repository.auth import get_current_user
@@ -259,17 +260,17 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #------------------------------------------
 
 @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
-    description="Crea una nueva orden con detalles para múltiples productos existentes y asigna una mesa especificada. La mesa con número 1 siempre permanece en estado Libre. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID.")
+    description="Crea una nueva orden o añade productos a una orden existente para una mesa especificada. La mesa con número 1 siempre permanece en estado Libre. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa (no finalizada ni cancelada).")
 async def crear_orden(
     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
     quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
     table_number: int = Form(..., description="Número de la mesa a asignar a la orden (la mesa con número 1 siempre permanece disponible)"),
-    order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID."),
+    metodo_pago: PaymentMethodEnum = Form(PaymentMethodEnum.efectivo, description="Método de pago de la orden (efectivo, tarjeta, pasarela)"),
+    order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
 ):
-    import logging
     logging.basicConfig(level=logging.DEBUG)
 
     # 1. Parsear las listas de product_ids y quantities
@@ -327,26 +328,41 @@ async def crear_orden(
     if not db_table:
         raise HTTPException(status_code=404, detail=f"Mesa con número {table_number} no encontrada o no te pertenece")
 
-    # 7. Determinar el order_uuid
-    if order_uuid is None or order_uuid == "":
+    # 7. Determinar el order_uuid y manejar órdenes existentes
+    existing_order = None
+    if order_uuid:
+        try:
+            UUID(order_uuid)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="El order_uuid proporcionado no es válido")
+        existing_orders = db.query(OrdersModel).filter(
+            OrdersModel.order_uuid == order_uuid,
+            OrdersModel.user_id == current_user.id_users
+        ).all()
+        for order in existing_orders:
+            if order.order_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El order_uuid {order_uuid} corresponde a una orden finalizada o cancelada y no puede ser reutilizado"
+                )
+            if order.mesa_id != db_table.id_tables:
+                raise HTTPException(status_code=400, detail="El order_uuid proporcionado ya está en uso para otra mesa")
+            if order.order_status not in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+                existing_order = order  # Encontramos una orden activa
+
+    if not order_uuid or order_uuid == "":
         if db_table.state == TablesEnum.Ocupado and table_number != 1:
             latest_order = db.query(OrdersModel).filter(
                 OrdersModel.mesa_id == db_table.id_tables,
-                OrdersModel.state == RoleOrders.Ocupado
+                OrdersModel.order_status.notin_([OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado])
             ).order_by(OrdersModel.date_time.desc()).first()
-            order_uuid = latest_order.order_uuid if latest_order else str(uuid.uuid4())
+            if latest_order:
+                order_uuid = latest_order.order_uuid
+                existing_order = latest_order
+            else:
+                order_uuid = str(uuid4())
         else:
-            order_uuid = str(uuid.uuid4())
-    else:
-        try:
-            uuid.UUID(order_uuid)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="El order_uuid proporcionado no es válido")
-        existing_order = db.query(OrdersModel).filter(
-            OrdersModel.order_uuid == order_uuid
-        ).first()
-        if existing_order and existing_order.mesa_id != db_table.id_tables:
-            raise HTTPException(status_code=400, detail="El order_uuid proporcionado ya está en uso para otra mesa")
+            order_uuid = str(uuid4())
 
     # 8. Verificar que los productos existan y pertenezca al usuario autenticado
     products = []
@@ -361,50 +377,78 @@ async def crear_orden(
         products.append(db_product)
         product_names.append(db_product.name)
 
-    # 9. Calcular el total de la orden
+    # 9. Calcular el total de los nuevos productos
+    new_total = 0.0
     for db_product, qty in zip(products, quantities_list):
-        total_order += float(db_product.price) * qty
+        new_total += float(db_product.price) * qty
 
-    # 10. Crear la orden (Orders) asociada al usuario autenticado
-    db_order = OrdersModel(
-        mesa_id=db_table.id_tables,
-        state=RoleOrders.Ocupado,
-        order_status=OrderStatusEnum.Pendiente,
-        date_time=datetime.utcnow(),
-        total=total_order,
-        orderscol="Orden creada manualmente",
-        user_id=current_user.id_users,
-        product_name=", ".join(product_names),
-        order_uuid=order_uuid
-    )
-    db.add(db_order)
+    # 10. Si existe una orden activa, actualizarla; si no, crear una nueva
+    if existing_order:
+        # Actualizar la orden existente
+        existing_order.total = float(existing_order.total or 0.0) + new_total
+        existing_order.product_name = ", ".join(
+            list(set(existing_order.product_name.split(", ") + product_names)) if existing_order.product_name else product_names
+        )
+        existing_order.date_time = datetime.utcnow()  # Actualizar la fecha
+        existing_order.metodo_pago = metodo_pago  # Actualizar método de pago
+        db.add(existing_order)
 
-    # 11. Actualizar el estado de la mesa a Ocupado solo si no es la mesa número 1
-    if db_table.state == TablesEnum.Libre and table_number != 1:
-        db_table.state = TablesEnum.Ocupado
+        # Añadir nuevos detalles
+        for db_product, qty in zip(products, quantities_list):
+            unit_price = float(db_product.price)
+            subtotal = qty * unit_price
+            db_order_detail = OrdersDetailsModel(
+                order_id=existing_order.id_orders,
+                product_id=db_product.id_products,
+                quantity=qty,
+                unit_price=unit_price,
+                subtotal=subtotal
+            )
+            db.add(db_order_detail)
+    else:
+        # Crear una nueva orden
+        db_order = OrdersModel(
+            mesa_id=db_table.id_tables,
+            state=RoleOrders.Ocupado,
+            order_status=OrderStatusEnum.Pendiente,
+            date_time=datetime.utcnow(),
+            total=new_total,
+            orderscol="Orden creada manualmente",
+            user_id=current_user.id_users,
+            product_name=", ".join(product_names),
+            order_uuid=order_uuid,
+            metodo_pago=metodo_pago  # Incluir método de pago
+        )
+        db.add(db_order)
+
+        # Actualizar el estado de la mesa a Ocupado solo si no es la mesa número 1
+        if db_table.state == TablesEnum.Libre and table_number != 1:
+            db_table.state = TablesEnum.Ocupado
+
+        db.commit()
+        db.refresh(db_order)
+
+        # Crear los detalles de pedido
+        for db_product, qty in zip(products, quantities_list):
+            unit_price = float(db_product.price)
+            subtotal = qty * unit_price
+            db_order_detail = OrdersDetailsModel(
+                order_id=db_order.id_orders,
+                product_id=db_product.id_products,
+                quantity=qty,
+                unit_price=unit_price,
+                subtotal=subtotal
+            )
+            db.add(db_order_detail)
+
     db.commit()
-    db.refresh(db_order)
     db.refresh(db_table)
 
-    # 12. Crear los detalles de pedido (OrdersDetails) para cada producto
-    for db_product, qty in zip(products, quantities_list):
-        unit_price = float(db_product.price)
-        subtotal = qty * unit_price
-        db_order_detail = OrdersDetailsModel(
-            order_id=db_order.id_orders,
-            product_id=db_product.id_products,
-            quantity=qty,
-            unit_price=unit_price,
-            subtotal=subtotal
-        )
-        db.add(db_order_detail)
-
-    db.commit()
-
-    # 13. Refrescar la orden para incluir los detalles y el número de la mesa
+    # 11. Refrescar la orden para la respuesta
+    db_order = existing_order or db_order
     db.refresh(db_order)
 
-    # Crear una instancia del esquema manualmente para incluir mesa_number
+    # Crear la respuesta
     order_response = OrderCreateResponse.from_orm(db_order)
     order_response.mesa_id = db_order.mesa_id
     order_response.mesa_number = db_table.number
@@ -594,37 +638,109 @@ async def finalizar_orden(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    db_order = db.query(OrdersModel).filter(
+    # Obtener todas las órdenes con el order_uuid para el usuario
+    db_orders = db.query(OrdersModel).filter(
         OrdersModel.order_uuid == order_uuid,
         OrdersModel.user_id == current_user.id_users
-    ).first()
-    if not db_order:
-        raise HTTPException(status_code=404, detail=f"Orden con UUID {order_uuid} no encontrada o no te pertenece")
+    ).all()
 
-    if not db_order.mesa_id:
-        raise HTTPException(status_code=400, detail="La orden no está asociada a una mesa")
-    
-    db_table = db.query(TablesModel).filter(TablesModel.id_tables == db_order.mesa_id).first()
+    if not db_orders:
+        raise HTTPException(status_code=404, detail=f"No se encontraron órdenes con UUID {order_uuid} o no te pertenecen")
+
+    # Verificar que todas las órdenes tengan una mesa asociada
+    mesa_ids = {order.mesa_id for order in db_orders if order.mesa_id}
+    if not mesa_ids:
+        raise HTTPException(status_code=400, detail="Las órdenes no están asociadas a ninguna mesa")
+    if len(mesa_ids) > 1:
+        raise HTTPException(status_code=400, detail="Las órdenes están asociadas a múltiples mesas, lo cual no es permitido")
+
+    mesa_id = mesa_ids.pop()
+    db_table = db.query(TablesModel).filter(TablesModel.id_tables == mesa_id).first()
     if not db_table:
         raise HTTPException(status_code=400, detail="La mesa no existe")
-    
-    # Verificar si la orden ya está finalizada o cancelada
-    if db_order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
-        raise HTTPException(status_code=400, detail="La orden ya ha sido finalizada o cancelada")
 
-    db_order.order_status = order_status
-    if order_status == OrderStatusEnum.Finalizado:
-        # Solo liberar la mesa si el estado es Finalizado
+    # Verificar si alguna orden ya está finalizada o cancelada
+    for order in db_orders:
+        if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
+            raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
+
+    # Actualizar el estado de todas las órdenes
+    for order in db_orders:
+        order.order_status = order_status
+        db.add(order)
+
+    # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
+    if order_status == OrderStatusEnum.Finalizado and db_table.number != 1:
         db_table.state = TablesEnum.Libre
 
     db.commit()
-    db.refresh(db_order)
+
+    # Refrescar la primera orden y la mesa para la respuesta
+    db.refresh(db_orders[0])
     db.refresh(db_table)
 
     return OrderFinalizeResponse(
-        message="Cambio de estado de orden realizado con éxito",
-        order_id=db_order.id_orders,  # Incluir id_orders en la respuesta
-        mesa_id=db_order.mesa_id,
-        order_status=db_order.order_status,
+        message=f"Cambio de estado de {len(db_orders)} orden(es) realizado con éxito",
+        order_id=db_orders[0].id_orders,  # Usar la primera orden para la respuesta
+        mesa_id=mesa_id,
+        order_status=order_status,
         mesa_state=db_table.state
     )
+#------------------------------------------
+#------------------------------------------
+
+
+@router.get("/{order_uuid}", response_model=OrderDetailsByUUIDResponse, status_code=status.HTTP_200_OK,
+    description="Obtiene los detalles de una orden específica por su UUID, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
+async def obtener_orden_por_uuid(
+    order_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene los detalles de una orden específica por su UUID.
+    Retorna el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.
+    """
+    # Obtener la orden con el order_uuid para el usuario autenticado
+    db_order = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).options(
+        joinedload(OrdersModel.order_details).joinedload(OrdersDetails.product),
+        joinedload(OrdersModel.user).joinedload(User.user_info)
+    ).first()
+
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"Orden con UUID {order_uuid} no encontrada o no te pertenece")
+
+    # Construir la lista de detalles de productos
+    product_details = [
+        {
+            "product_name": detail.product.name if detail.product else "Producto desconocido",
+            "quantity": detail.quantity,
+            "unit_price": detail.unit_price,
+            "subtotal": detail.subtotal
+        }
+        for detail in db_order.order_details
+    ]
+
+    # Obtener el nombre del restaurante desde UserInfo
+    restaurant_name = (
+        db_order.user.user_info[0].nombre_restaurante
+        if db_order.user.user_info and db_order.user.user_info[0].nombre_restaurante
+        else "Sin nombre de restaurante"
+    )
+
+    # Construir la respuesta
+    response = OrderDetailsByUUIDResponse(
+        restaurant_name=restaurant_name,
+        order_uuid=db_order.order_uuid,
+        date_time=db_order.date_time,
+        state=db_order.state,
+        order_status=db_order.order_status,
+        products=product_details,
+        total=db_order.total,
+        metodo_pago=db_order.metodo_pago
+    )
+
+    return response
