@@ -7,7 +7,7 @@ import logging
 from uuid import uuid4, UUID
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrderDetailsByUUIDResponse, OrderDetailItem
 from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
@@ -689,7 +689,6 @@ async def finalizar_orden(
 #------------------------------------------
 #------------------------------------------
 
-
 @router.get("/{order_uuid}", response_model=OrderDetailsByUUIDResponse, status_code=status.HTTP_200_OK,
     description="Obtiene los detalles de una orden específica por su UUID, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
 async def obtener_orden_por_uuid(
@@ -706,7 +705,7 @@ async def obtener_orden_por_uuid(
         OrdersModel.order_uuid == order_uuid,
         OrdersModel.user_id == current_user.id_users
     ).options(
-        joinedload(OrdersModel.order_details).joinedload(OrdersDetails.product),
+        joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),  # Usar el modelo SQLAlchemy OrdersDetails
         joinedload(OrdersModel.user).joinedload(User.user_info)
     ).first()
 
@@ -715,19 +714,19 @@ async def obtener_orden_por_uuid(
 
     # Construir la lista de detalles de productos
     product_details = [
-        {
-            "product_name": detail.product.name if detail.product else "Producto desconocido",
-            "quantity": detail.quantity,
-            "unit_price": detail.unit_price,
-            "subtotal": detail.subtotal
-        }
+        OrderDetailItem(
+            product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+            quantity=detail.quantity,
+            unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+            subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+        )
         for detail in db_order.order_details
     ]
 
     # Obtener el nombre del restaurante desde UserInfo
     restaurant_name = (
-        db_order.user.user_info[0].nombre_restaurante
-        if db_order.user.user_info and db_order.user.user_info[0].nombre_restaurante
+        db_order.user.user_info.nombre_restaurante
+        if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
         else "Sin nombre de restaurante"
     )
 
@@ -739,7 +738,7 @@ async def obtener_orden_por_uuid(
         state=db_order.state,
         order_status=db_order.order_status,
         products=product_details,
-        total=db_order.total,
+        total=float(db_order.total) if db_order.total is not None else 0.0,
         metodo_pago=db_order.metodo_pago
     )
 
