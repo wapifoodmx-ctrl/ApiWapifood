@@ -7,7 +7,7 @@ import logging
 from uuid import uuid4, UUID
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrderDetailsByUUIDResponse, OrderDetailItem
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem
 from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel
@@ -693,8 +693,7 @@ async def finalizar_orden(
     description="Obtiene los detalles de una orden específica por su UUID, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
 async def obtener_orden_por_uuid(
     order_uuid: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
     """
     Obtiene los detalles de una orden específica por su UUID.
@@ -702,15 +701,14 @@ async def obtener_orden_por_uuid(
     """
     # Obtener la orden con el order_uuid para el usuario autenticado
     db_order = db.query(OrdersModel).filter(
-        OrdersModel.order_uuid == order_uuid,
-        OrdersModel.user_id == current_user.id_users
+        OrdersModel.order_uuid == order_uuid
     ).options(
         joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),  # Usar el modelo SQLAlchemy OrdersDetails
         joinedload(OrdersModel.user).joinedload(User.user_info)
     ).first()
 
     if not db_order:
-        raise HTTPException(status_code=404, detail=f"Orden con UUID {order_uuid} no encontrada o no te pertenece")
+        raise HTTPException(status_code=404, detail=f"Orden con UUID {order_uuid} no encontrada")
 
     # Construir la lista de detalles de productos
     product_details = [
@@ -743,3 +741,132 @@ async def obtener_orden_por_uuid(
     )
 
     return response
+
+#------------------------------------------
+#------------------------------------------
+
+
+@router.get("/orders/allorders", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
+description="Obtiene todas las órdenes del usuario autenticado, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
+async def get_all_my_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene todas las órdenes asociadas al usuario autenticado.
+    Retorna una lista con el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago para cada orden.
+    """
+    # Obtener todas las órdenes del usuario autenticado
+    db_orders = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users
+    ).options(
+        joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),  # Corregido a OrdersDetails
+        joinedload(OrdersModel.user).joinedload(User.user_info)
+    ).all()
+
+    if not db_orders:
+        raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario")
+
+    # Construir la lista de respuestas
+    responses = []
+    for db_order in db_orders:
+        # Construir la lista de detalles de productos
+        product_details = [
+            OrderDetailItem(
+                product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+                quantity=detail.quantity,
+                unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+            )
+            for detail in db_order.order_details
+        ]
+
+        # Obtener el nombre del restaurante desde UserInfo
+        restaurant_name = (
+            db_order.user.user_info.nombre_restaurante
+            if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
+            else "Sin nombre de restaurante"
+        )
+
+        # Construir la respuesta para cada orden
+        response = OrderDetailsByUUIDResponse(
+            restaurant_name=restaurant_name,
+            order_uuid=db_order.order_uuid,
+            date_time=db_order.date_time,
+            state=db_order.state,
+            order_status=db_order.order_status,
+            products=product_details,
+            total=float(db_order.total) if db_order.total is not None else 0.0,
+            metodo_pago=db_order.metodo_pago
+        )
+        responses.append(response)
+
+    return responses
+
+
+
+#------------------------------------------
+#------------------------------------------
+
+@router.get("orders/by-status", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
+    description="Obtiene todas las órdenes del usuario autenticado filtradas por estado, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
+async def get_my_orders_by_status(
+    status: OrderStatusEnum = None,  # Parámetro opcional para filtrar por estado
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene todas las órdenes asociadas al usuario autenticado, filtradas por estado si se especifica.
+    Retorna una lista con el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago para cada orden.
+    - status: Filtro opcional por estado (Pendiente, EnCocina, Preparado, Cancelado, Completado, Finalizado). Si no se proporciona, devuelve todas las órdenes.
+    """
+    # Construir la consulta base
+    query = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users
+    ).options(
+        joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
+        joinedload(OrdersModel.user).joinedload(User.user_info)
+    )
+
+    # Aplicar filtro por estado si se proporciona
+    if status:
+        query = query.filter(OrdersModel.order_status == status)
+
+    # Ejecutar la consulta
+    db_orders = query.all()
+
+    if not db_orders:
+        raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario con el estado especificado" if status else "No se encontraron órdenes para este usuario")
+
+    # Construir la lista de respuestas
+    responses = []
+    for db_order in db_orders:
+        product_details = [
+            OrderDetailItem(
+                product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+                quantity=detail.quantity,
+                unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+            )
+            for detail in db_order.order_details
+        ]
+
+        restaurant_name = (
+            db_order.user.user_info.nombre_restaurante
+            if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
+            else "Sin nombre de restaurante"
+        )
+
+        response = OrderDetailsByUUIDResponse(
+            restaurant_name=restaurant_name,
+            order_uuid=db_order.order_uuid,
+            date_time=db_order.date_time,
+            state=db_order.state,
+            order_status=db_order.order_status,
+            products=product_details,
+            total=float(db_order.total) if db_order.total is not None else 0.0,
+            metodo_pago=db_order.metodo_pago
+        )
+        responses.append(response)
+
+    return responses
