@@ -389,11 +389,13 @@ async def crear_orden(
         existing_order.product_name = ", ".join(
             list(set(existing_order.product_name.split(", ") + product_names)) if existing_order.product_name else product_names
         )
-        existing_order.date_time = datetime.utcnow()  # Actualizar la fecha
+        existing_order.date_time = datetime.now()  # Actualizar la fecha
         existing_order.metodo_pago = metodo_pago  # Actualizar método de pago
+        # Actualizar el estatus global de la orden si hay nuevos productos
+        existing_order.order_status = OrderStatusEnum.Pendiente
         db.add(existing_order)
 
-        # Añadir nuevos detalles
+        # Añadir nuevos detalles con estatus Pendiente
         for db_product, qty in zip(products, quantities_list):
             unit_price = float(db_product.price)
             subtotal = qty * unit_price
@@ -402,7 +404,8 @@ async def crear_orden(
                 product_id=db_product.id_products,
                 quantity=qty,
                 unit_price=unit_price,
-                subtotal=subtotal
+                subtotal=subtotal,
+                order_detail_status=OrderStatusEnum.Pendiente  # Estatus inicial para nuevos detalles
             )
             db.add(db_order_detail)
     else:
@@ -411,13 +414,13 @@ async def crear_orden(
             mesa_id=db_table.id_tables,
             state=RoleOrders.Ocupado,
             order_status=OrderStatusEnum.Pendiente,
-            date_time=datetime.utcnow(),
+            date_time=datetime.now(),
             total=new_total,
             orderscol="Orden creada manualmente",
             user_id=current_user.id_users,
             product_name=", ".join(product_names),
             order_uuid=order_uuid,
-            metodo_pago=metodo_pago  # Incluir método de pago
+            metodo_pago=metodo_pago
         )
         db.add(db_order)
 
@@ -428,7 +431,7 @@ async def crear_orden(
         db.commit()
         db.refresh(db_order)
 
-        # Crear los detalles de pedido
+        # Crear los detalles de pedido con estatus Pendiente
         for db_product, qty in zip(products, quantities_list):
             unit_price = float(db_product.price)
             subtotal = qty * unit_price
@@ -437,7 +440,8 @@ async def crear_orden(
                 product_id=db_product.id_products,
                 quantity=qty,
                 unit_price=unit_price,
-                subtotal=subtotal
+                subtotal=subtotal,
+                order_detail_status=OrderStatusEnum.Pendiente  # Estatus inicial para nuevos detalles
             )
             db.add(db_order_detail)
 
@@ -555,7 +559,7 @@ def obtener_ordenes_por_uuid(
 #------------------------------------------
 
 @router.get("/summary", response_model=dict, status_code=status.HTTP_200_OK)
-def get_order_summary(
+def dame_resumen_orders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -631,6 +635,8 @@ async def finalizar_orden(
 #------------------------------------------
 #------------------------------------------
 
+
+#
 @router.put("/orders/{order_uuid}/cambio_dtatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
@@ -716,7 +722,8 @@ async def obtener_orden_por_uuid(
             product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
             quantity=detail.quantity,
             unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-            subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+            subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+            order_detail_status=detail.order_detail_status
         )
         for detail in db_order.order_details
     ]
@@ -748,7 +755,7 @@ async def obtener_orden_por_uuid(
 
 @router.get("/orders/allorders", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
 description="Obtiene todas las órdenes del usuario autenticado, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
-async def get_all_my_orders(
+async def dame_todas_las_ordenes(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -776,7 +783,8 @@ async def get_all_my_orders(
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+                order_detail_status=detail.order_detail_status  # Agregado para incluir el estado del detalle
             )
             for detail in db_order.order_details
         ]
@@ -810,7 +818,7 @@ async def get_all_my_orders(
 
 @router.get("orders/by-status", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
     description="Obtiene todas las órdenes del usuario autenticado filtradas por estado, incluyendo el nombre del restaurante, UUID, fecha, productos, cantidades, precios, subtotales, total y método de pago.")
-async def get_my_orders_by_status(
+async def dame_ordenes_por_estado(
     status: OrderStatusEnum = None,  # Parámetro opcional para filtrar por estado
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -846,7 +854,8 @@ async def get_my_orders_by_status(
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0
+                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+                order_detail_status=detail.order_detail_status
             )
             for detail in db_order.order_details
         ]
@@ -870,3 +879,59 @@ async def get_my_orders_by_status(
         responses.append(response)
 
     return responses
+
+
+
+#------------------------------------------
+#------------------------------------------
+
+@router.put("/orders/{order_uuid}/cambio_details_status", response_model=OrderDetailItem, status_code=status.HTTP_200_OK)
+async def finalizar_orden(
+    order_uuid: str,
+    id_orders_details: int,
+    order_detail_status: OrderStatusEnum,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Buscar la orden por UUID y usuario
+    db_order = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).first()
+
+    if not db_order:
+        raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid} o no te pertenece")
+
+    # 2. Buscar el detalle de la orden por id_orders_details y que pertenezca a la orden encontrada
+    db_order_detail = db.query(OrdersDetailsModel).filter(
+        OrdersDetailsModel.id_orders_details == id_orders_details,
+        OrdersDetailsModel.order_id == db_order.id_orders
+    ).first()
+    if not db_order_detail:
+        raise HTTPException(status_code=404, detail=f"No se encontró el detalle con id {id_orders_details} para el UUID {order_uuid}")
+
+    # Solo permitir modificar si el estado actual NO es Finalizado ni Cancelado
+    if db_order_detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede modificar el estado porque el detalle ya está en estado '{db_order_detail.order_detail_status.value}'"
+        )
+    
+    # 3. Cambiar el estado del detalle
+    db_order_detail.order_detail_status = order_detail_status
+    db.add(db_order_detail)
+    db.commit()
+    db.refresh(db_order_detail)
+
+
+    # Refrescar la primera orden y la mesa para la respuesta
+    # db.refresh(db_orders[0])
+    # db.refresh(db_table)
+
+    return OrderDetailItem(
+        product_name=db_order_detail.product.name if db_order_detail.product and db_order_detail.product.name else "Producto desconocido",
+        quantity=db_order_detail.quantity,
+        unit_price=float(db_order_detail.unit_price) if db_order_detail.unit_price is not None else 0.0,
+        subtotal=float(db_order_detail.subtotal) if db_order_detail.subtotal is not None else 0.0,
+        order_detail_status=db_order_detail.order_detail_status
+    )

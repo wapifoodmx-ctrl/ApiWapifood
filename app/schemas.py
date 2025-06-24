@@ -115,6 +115,7 @@ class OrdersDetails(BaseModel):
     quantity:int
     unit_price:Decimal
     subtotal:Decimal
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     class Config:
         from_attributes = True
 
@@ -125,6 +126,7 @@ class OrdersDetailsSchema(BaseModel):
     quantity: int
     unit_price: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
     subtotal: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         from_attributes = True
@@ -203,6 +205,7 @@ class OrderDetailItem(BaseModel):
     quantity: int
     unit_price: Decimal
     subtotal: Decimal
+    order_detail_status: OrderStatusEnum 
 
     class Config:
         from_attributes = True
@@ -520,6 +523,7 @@ class OrderDetailResponse(BaseModel):
     quantity: int
     unit_price: float = 0.0
     subtotal: float
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         orm_mode = True

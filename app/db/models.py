@@ -10,6 +10,7 @@ from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, Statu
 from datetime import datetime
 import uuid
 
+
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
 User → Payments: Un usuario puede realizar varios pagos (user.payments), y cada pago está asociado a un solo usuario (payments.user).
@@ -246,6 +247,8 @@ class OrdersDetails(Base):
     quantity = Column(Integer)
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
+    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus
+    # Relaciones
       # Relaciones
     order = relationship("Orders", back_populates="order_details")
     product = relationship("Products", back_populates="order_details")
