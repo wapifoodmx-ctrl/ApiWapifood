@@ -1,7 +1,7 @@
 # app/repository/user.py
 from sqlalchemy.orm import Session, joinedload
 from app.db import models
-from app.schemas import User, UserInfo, UserInfoCreate
+from app.schemas import User, UserInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
 from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
@@ -39,6 +39,12 @@ def crear_usuario(usuario, db: Session):
               status_code=status.HTTP_409_CONFLICT,
               detail=f"Error creando usuario: {e}"
          )
+    
+
+
+#-------------------------------------------
+#-------------------------------------------
+
 
 def obtener_usuario(user_id, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
@@ -85,6 +91,9 @@ def actualizar_usuarios(user_id, updateUser, db: Session):
     )
 
 
+#-------------------------------------------
+#-------------------------------------------
+
 
 def obtener_user_con_info(user_id: int, db: Session):
     user = (
@@ -125,6 +134,11 @@ def obtener_user_con_info(user_id: int, db: Session):
 #         db.rollback()
 #         raise HTTPException(status_code=409, detail=f"Error creando restaurante: {str(e)}")
 
+
+#-------------------------------------------
+#-------------------------------------------
+
+
 def actualizar_o_crear_user_info(
     user_id: int,
     telefono: Optional[str] = Form(None),
@@ -134,6 +148,7 @@ def actualizar_o_crear_user_info(
     alcaldia: Optional[str] = Form(None),
     nombre_restaurante: Optional[str] = Form(None),
     whatsapp: Optional[str] = Form(None),
+    horario: Optional[str] = Form(None),
     image: UploadFile = None,
     db: Session = Depends(get_db)
 ):
@@ -153,6 +168,7 @@ def actualizar_o_crear_user_info(
         user_info_record.alcaldia = alcaldia or user_info_record.alcaldia
         user_info_record.nombre_restaurante = nombre_restaurante or user_info_record.nombre_restaurante
         user_info_record.whatsapp = whatsapp or user_info_record.whatsapp
+        user_info_record.horario = horario or user_info_record.horario
     else:
         user_info_record = UserInfo(
             user_id=user_id,
@@ -165,7 +181,8 @@ def actualizar_o_crear_user_info(
             ciudad=ciudad,
             alcaldia=alcaldia,
             nombre_restaurante=nombre_restaurante,
-            whatsapp=whatsapp
+            whatsapp=whatsapp,
+            horario=horario
         )
         db.add(user_info_record)
     
@@ -195,3 +212,32 @@ def actualizar_o_crear_user_info(
     db.refresh(user_info_record)
 
     return user_info_record
+
+
+#-------------------------------------------
+#-------------------------------------------
+
+
+def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUIDResponse]:
+    """
+    Obtiene la información de un usuario (telefono, direccion, nombre_restaurante, whatsapp, image)
+    a partir de su user_uuid.
+    """
+    # Buscar el UserInfo asociado al user_uuid
+    user_info = db.query(UserInfo).filter(UserInfo.user_uuid == user_uuid).first()
+    
+    if not user_info:
+        return None
+
+    # Buscar la imagen asociada, si existe
+    image_user = db.query(ImageUser).filter(ImageUser.user_info_id == user_info.id_user_info).first()
+    image_path = image_user.file_path if image_user else None  # Cambiado de image_path a file_path
+
+    # Crear la respuesta usando el esquema UserInfoByUUIDResponse
+    return UserInfoByUUIDResponse(
+        telefono=user_info.telefono,
+        direccion=user_info.direccion,
+        nombre_restaurante=user_info.nombre_restaurante,
+        whatsapp=user_info.whatsapp,
+        image=image_path
+    )

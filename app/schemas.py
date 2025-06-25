@@ -115,6 +115,7 @@ class OrdersDetails(BaseModel):
     quantity:int
     unit_price:Decimal
     subtotal:Decimal
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     class Config:
         from_attributes = True
 
@@ -125,6 +126,7 @@ class OrdersDetailsSchema(BaseModel):
     quantity: int
     unit_price: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
     subtotal: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         from_attributes = True
@@ -198,6 +200,30 @@ class Tables(BaseModel):
         from_attributes = True
 
 
+class OrderDetailItem(BaseModel):
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    subtotal: Decimal
+    order_detail_status: OrderStatusEnum 
+
+    class Config:
+        from_attributes = True
+
+class OrderDetailsByUUIDResponse(BaseModel):
+    restaurant_name: str
+    order_uuid: str
+    date_time: datetime
+    state: RoleOrders
+    order_status: OrderStatusEnum
+    products: List[OrderDetailItem]
+    total: Decimal
+    metodo_pago: PaymentMethodEnum
+
+    class Config:
+        from_attributes = True
+
+
 # Esquema para crear un producto (con campos adicionales)
 class ProductsCreate(BaseModel):
     name: str | None = None
@@ -218,7 +244,7 @@ class ImageResponse(BaseModel):
     @property
     def url(self):
         # Construye la URL completa (ajusta según tu configuración)
-        return f"http://189.147.92.232:8000/static/uploads/{self.file_name}"
+        return f"https://comandapp-api.h-dev.xyz/static/uploads/{self.file_name}"
         
         #return f"http://192.168.1.69/static/uploads/{self.file_name}"
 
@@ -340,6 +366,9 @@ class ImageUserResponse(BaseModel):
     class Config:
         from_attributes = True
 
+        #https://comandapp-api.h-dev.xyz
+        #https://comandapp-api.h-dev.xyz
+
 # class ImageUserResponse(BaseModel):
 #     id: int | None = None
 #     file_name: str
@@ -378,6 +407,7 @@ class UserInfoResponse(BaseModel):
     alcaldia: Optional[str] = None
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
+    horario: Optional[str] = None  # Nuevo campo para horario
     user_id: int | None = None
     user_uuid: Optional[str] = None  # Correctamente definido como str
     image_user: Optional[ImageUserResponse] = None
@@ -393,7 +423,23 @@ class UserWithInfo(BaseModel):
         from_attributes = True
 
 
+<<<<<<< HEAD
 
+=======
+class UserInfoByUUIDResponse(BaseModel):
+    telefono: Optional[str] = None
+    direccion: Optional[str] = None
+    nombre_restaurante: Optional[str] = None
+    whatsapp: Optional[str] = None
+    image: Optional[str] = None
+    direccion: Optional[str] = None
+    codigo_postal: Optional[int] = None
+    ciudad: Optional[str] = None
+    alcaldia: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+>>>>>>> dc5f9c9c141121c5359b41b4db951ee37e7bfce2
 
 
 class CategoriaCreate(BaseModel):
@@ -477,10 +523,11 @@ class OrdersCreate(BaseModel):
         from_attributes = True
 
 class OrderDetailResponse(BaseModel):
-    product_id: int
+    #product_id: int
     quantity: int
     unit_price: float = 0.0
     subtotal: float
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         orm_mode = True
@@ -488,11 +535,14 @@ class OrderDetailResponse(BaseModel):
 
 class OrdersResponse(BaseModel):
     id_orders: int
-    state: str
+    state: RoleOrders  # Cambiado de str a RoleOrders
+    order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
-    total: float
-    product_name: str = "Sin dato" # Asegúrate de incluir este campo
-    #payment_method: str  # Nuevo campo
+    total: Decimal  # Cambiado de float a Decimal para precisión
+    orderscol: str
+    user_id: Optional[int] = None
+    order_uuid: str
+    product_name: str = "Sin dato"
     details: List[OrderDetailResponse]
 
     class Config:

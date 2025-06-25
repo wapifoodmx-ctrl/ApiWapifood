@@ -10,6 +10,7 @@ from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, Statu
 from datetime import datetime
 import uuid
 
+
 """
 User → Orders: Un usuario puede tener varios pedidos (user.orders), y cada pedido tiene un solo usuario (orders.user).
 User → Payments: Un usuario puede realizar varios pagos (user.payments), y cada pago está asociado a un solo usuario (payments.user).
@@ -144,6 +145,7 @@ class UserInfo(Base):
     alcaldia = Column(String(50), nullable=True)
     nombre_restaurante = Column(String(50), nullable=True)
     whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
+    horario = Column(String(50), nullable=True)  # Nuevo campo para horario
 
     # Relaciones
     # Clave foránea a la tabla 'users'
@@ -172,7 +174,8 @@ class Orders(Base):
     orderscol = Column(String(50))
     product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
-    order_uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
+    order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
+    metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
@@ -245,6 +248,8 @@ class OrdersDetails(Base):
     quantity = Column(Integer)
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
+    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus
+    # Relaciones
       # Relaciones
     order = relationship("Orders", back_populates="order_details")
     product = relationship("Products", back_populates="order_details")

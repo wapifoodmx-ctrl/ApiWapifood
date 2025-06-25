@@ -19,10 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
-    # Añadir la columna uuid como String(36)
-    op.add_column('users', sa.Column('uuid', sa.String(36), nullable=False))
-    # Opcional: Poblar la columna con valores únicos
-    op.execute("UPDATE users SET uuid = UUID()")
+    pass
+    # # Añadir la columna uuid como String(36)
+    # op.add_column('users', sa.Column('uuid', sa.String(36), nullable=False))
+    # # Opcional: Poblar la columna con valores únicos
+    # op.execute("UPDATE users SET uuid = UUID()")
 
 def downgrade():
     # Eliminar la columna uuid
