@@ -393,6 +393,9 @@ class UserWithInfo(BaseModel):
         from_attributes = True
 
 
+
+
+
 class CategoriaCreate(BaseModel):
     nombre_categoria: str
     descripcion_categoria: str # Cambié "description_categoria" a seguir tu convención
