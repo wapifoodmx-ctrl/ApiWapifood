@@ -631,10 +631,11 @@ async def finalizar_orden(
 #------------------------------------------
 #------------------------------------------
 
-@router.put("/orders/{order_uuid}/cambio_dtatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
+@router.put("/orders/{order_uuid}/cambio_estatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
     order_status: OrderStatusEnum,
+    metodo_pago: PaymentMethodEnum,  # Nuevo parámetro para cambiar el método de pago
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -664,9 +665,10 @@ async def finalizar_orden(
         if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
             raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
 
-    # Actualizar el estado de todas las órdenes
+    # Actualizar el estado y el método de pago de todas las órdenes
     for order in db_orders:
         order.order_status = order_status
+        order.metodo_pago = metodo_pago  # Actualizar el método de pago
         db.add(order)
 
     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
@@ -680,12 +682,14 @@ async def finalizar_orden(
     db.refresh(db_table)
 
     return OrderFinalizeResponse(
-        message=f"Cambio de estado de {len(db_orders)} orden(es) realizado con éxito",
+        message=f"Cambio de estado y método de pago de {len(db_orders)} orden(es) realizado con éxito",
         order_id=db_orders[0].id_orders,  # Usar la primera orden para la respuesta
         mesa_id=mesa_id,
         order_status=order_status,
         mesa_state=db_table.state
     )
+
+    
 #------------------------------------------
 #------------------------------------------
 
