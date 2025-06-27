@@ -452,11 +452,7 @@ async def crear_orden(
     db_order = existing_order or db_order
     db.refresh(db_order)
 
-<<<<<<< HEAD
     # 10. Crear respuesta con el número de mesa
-=======
-    # Crear la respuesta
->>>>>>> dc5f9c9c141121c5359b41b4db951ee37e7bfce2
     order_response = OrderCreateResponse.from_orm(db_order)
     order_response.mesa_id = db_order.mesa_id
     order_response.mesa_number = db_table.number
@@ -600,40 +596,6 @@ def dame_resumen_orders(
 
 
 
-@router.put("/orders/{order_id}/finalize", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
-async def finalizar_orden(
-    order_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    db_order = db.query(OrdersModel).filter(
-        OrdersModel.id_orders == order_id,
-        OrdersModel.user_id == current_user.id_users
-    ).first()
-    if not db_order:
-        raise HTTPException(status_code=404, detail=f"Orden con ID {order_id} no encontrada o no te pertenece")
-
-    if not db_order.mesa_id:
-        raise HTTPException(status_code=400, detail="La orden no está asociada a una mesa")
-    
-    db_table = db.query(TablesModel).filter(TablesModel.id_tables == db_order.mesa_id).first()
-    if not db_table or db_table.state != TablesEnum.Ocupado:
-        raise HTTPException(status_code=400, detail="La mesa no está ocupada o no existe")
-
-    db_order.order_status = OrderStatusEnum.Finalizado
-    db_table.state = TablesEnum.Libre
-
-    db.commit()
-    db.refresh(db_order)
-    db.refresh(db_table)
-
-    return OrderFinalizeResponse(
-        message="Orden finalizada y mesa liberada con éxito",
-        order_id=order_id,
-        mesa_id=db_order.mesa_id,
-        order_status=db_order.order_status,
-        mesa_state=db_table.state
-    )
 
 
 #------------------------------------------

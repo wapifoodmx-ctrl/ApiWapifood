@@ -423,9 +423,6 @@ class UserWithInfo(BaseModel):
         from_attributes = True
 
 
-<<<<<<< HEAD
-
-=======
 class UserInfoByUUIDResponse(BaseModel):
     telefono: Optional[str] = None
     direccion: Optional[str] = None
@@ -439,8 +436,7 @@ class UserInfoByUUIDResponse(BaseModel):
 
     class Config:
         from_attributes = True
->>>>>>> dc5f9c9c141121c5359b41b4db951ee37e7bfce2
-
+        
 
 class CategoriaCreate(BaseModel):
     nombre_categoria: str
