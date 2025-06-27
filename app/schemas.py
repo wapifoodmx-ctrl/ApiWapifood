@@ -420,6 +420,10 @@ class UserInfoResponse(BaseModel):
 
 
 class UserWithInfo(BaseModel):
+    id_users: int
+    name: str
+    email: Optional[str] = None
+    rol: RoleEnum
     user_info: Optional[UserInfoResponse] = None  # Cambiado de UserInfo a UserInfoResponse
 
     class Config:

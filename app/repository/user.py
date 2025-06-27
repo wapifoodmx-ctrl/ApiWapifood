@@ -1,7 +1,7 @@
 # app/repository/user.py
 from sqlalchemy.orm import Session, joinedload
 from app.db import models
-from app.schemas import User, UserInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
+from app.schemas import User, UserInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse, UserWithInfo, ImageUserResponse
 from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
@@ -95,13 +95,15 @@ def actualizar_usuarios(user_id, updateUser, db: Session):
 #-------------------------------------------
 
 
-def obtener_user_con_info(user_id: int, db: Session):
+
+
+def obtener_user_con_info(user_id: int, db: Session = Depends(get_db)) -> UserWithInfo:
     user = (
-        db.query(models.User)
+        db.query(User)
         .options(
-            joinedload(models.User.user_info).joinedload(models.UserInfo.image_user)
+            joinedload(User.user_info).joinedload(UserInfo.image_user)
         )
-        .filter(models.User.id_users == user_id)
+        .filter(User.id_users == user_id)
         .first()
     )
     if not user:
@@ -109,7 +111,43 @@ def obtener_user_con_info(user_id: int, db: Session):
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No existe el usuario con el id {user_id}"
         )
-    return user
+
+    # Convertir user_info a UserInfoResponse manualmente
+    user_info_response = None
+    if user.user_info:
+        image_user_response = None
+        if user.user_info.image_user:
+            image_user_response = ImageUserResponse(
+                id=user.user_info.image_user.id,
+                file_name=user.user_info.image_user.file_name,
+                file_path=user.user_info.image_user.file_path,
+                user_info_id=user.user_info.image_user.user_info_id
+            )
+        user_info_response = UserInfoResponse(
+            id_user_info=user.user_info.id_user_info,
+            nombre=user.user_info.nombre,
+            email=user.user_info.email,
+            telefono=user.user_info.telefono,
+            direccion=user.user_info.direccion,
+            codigo_postal=user.user_info.codigo_postal,
+            ciudad=user.user_info.ciudad,
+            alcaldia=user.user_info.alcaldia,
+            nombre_restaurante=user.user_info.nombre_restaurante,
+            whatsapp=user.user_info.whatsapp,
+            horario=user.user_info.horario,
+            user_id=user.user_info.user_id,
+            user_uuid=user.user_info.user_uuid,
+            image_user=image_user_response
+        )
+
+    # Crear la respuesta con UserWithInfo
+    return UserWithInfo(
+        id_users=user.id_users,
+        name=user.name,
+        email=user.email,
+        rol=user.rol,
+        user_info=user_info_response
+    )
 
 # def create_restaurante(db: Session, nombre_restaurante: str, ciudad: str, estado_provincia: str, alcadia: str, owner_id: int):
 #     # Verificar si el owner_id existe en la tabla users
@@ -217,7 +255,6 @@ def actualizar_o_crear_user_info(
 #-------------------------------------------
 #-------------------------------------------
 
-
 def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUIDResponse]:
     """
     Obtiene la información de un usuario (telefono, direccion, nombre_restaurante, whatsapp, image)
@@ -231,7 +268,9 @@ def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUI
 
     # Buscar la imagen asociada, si existe
     image_user = db.query(ImageUser).filter(ImageUser.user_info_id == user_info.id_user_info).first()
-    image_path = image_user.file_path if image_user else None  # Cambiado de image_path a file_path
+    # Construir la URL manualmente, como en ImageUserResponse
+    base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
+    image_url = f"{base_url}/static/uploads/{image_user.file_name}" if image_user else None
 
     # Crear la respuesta usando el esquema UserInfoByUUIDResponse
     return UserInfoByUUIDResponse(
@@ -239,5 +278,8 @@ def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUI
         direccion=user_info.direccion,
         nombre_restaurante=user_info.nombre_restaurante,
         whatsapp=user_info.whatsapp,
-        image=image_path
+        image=image_url,  # Usar la URL generada
+        codigo_postal=user_info.codigo_postal,
+        ciudad=user_info.ciudad,
+        alcaldia=user_info.alcaldia
     )

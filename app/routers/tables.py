@@ -248,12 +248,21 @@ def get_tables_status(
 
 @router.post("/status", response_model=dict, status_code=status.HTTP_200_OK)
 def update_table_status(
-    number: int = Form(... , description="Número de la mesa a actualizar"),
-    state: TablesEnum = Form(..., description="Nuevo estado de la mesa (Libre u Ocupado)"),
+    number: int = Form(..., description="Número de la mesa a actualizar"),
+    state: str = Form(..., description="Nuevo estado de la mesa (Libre u Ocupado)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Cambia el estado de una mesa específica entre Libre y Ocupado."""
+    # Validar que el estado sea un valor válido de TablesEnum
+    try:
+        state_enum = TablesEnum(state)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El estado '{state}' no es válido. Los valores permitidos son: {', '.join([e.value for e in TablesEnum])}"
+        )
+
     # Verificar si la mesa existe para el usuario
     table = db.query(TablesModel).filter(
         TablesModel.number == number,
@@ -263,19 +272,19 @@ def update_table_status(
         raise HTTPException(status_code=404, detail=f"Mesa {number} no encontrada para este usuario")
 
     # Validación: Mesa 1 siempre debe estar libre
-    if number == 1 and state == TablesEnum.Ocupado:
+    if number == 1 and state_enum == TablesEnum.Ocupado:
         raise HTTPException(status_code=403, detail="La mesa 1 siempre debe estar libre (punto de venta)")
 
     # Validación: No permitir cambiar a Ocupado si ya está Ocupado
-    if table.state == TablesEnum.Ocupado and state == TablesEnum.Ocupado:
+    if table.state == TablesEnum.Ocupado and state_enum == TablesEnum.Ocupado:
         raise HTTPException(status_code=400, detail=f"La mesa {number} ya está ocupada")
 
     # Actualizar el estado
     try:
-        table.state = state
+        table.state = state_enum
         db.commit()
         db.refresh(table)
-        return {"mensaje": f"Estado de la mesa {number} actualizado a {state.value}"}
+        return {"mensaje": f"Estado de la mesa {number} actualizado a {state_enum.value}"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Error actualizando el estado de la mesa: {str(e)}")
