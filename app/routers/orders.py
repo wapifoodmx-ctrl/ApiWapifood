@@ -479,11 +479,21 @@ def obtenemos_orders_details(
     if not orders:
         raise HTTPException(status_code=404, detail="No se encontraron órdenes para este usuario")
 
+    orders_dicts = []
+    for order in orders:
+        mesa_number = None
+        if order.mesa_id:
+            mesa = db.query(TablesModel).filter(TablesModel.id_tables == order.mesa_id).first()
+            if mesa:
+                mesa_number = mesa.number
+
     # Convertir los objetos OrdersModel a diccionarios
     orders_dicts = []
     for order in orders:
         order_dict = {
             "id_orders": order.id_orders,
+            # "mesa_id": order.mesa_id,
+            "mesa_number": mesa_number,
             "state": order.state,
             "order_status": order.order_status,  # Agregado
             "date_time": order.date_time,
@@ -499,7 +509,8 @@ def obtenemos_orders_details(
                     #"product_id": detail.product_id,
                     "quantity": detail.quantity,
                     "unit_price": detail.unit_price if detail.unit_price is not None else 0.0,  # Valor por defecto
-                    "subtotal": detail.subtotal if detail.subtotal is not None else 0.0  # Valor por defecto
+                    "subtotal": detail.subtotal if detail.subtotal is not None else 0.0, # Valor por defecto
+                    "order_detail_status": detail.order_detail_status  # Agregado para el estatus del detalle
                 }
                 for detail in order.order_details
             ]
@@ -535,6 +546,7 @@ def obtener_ordenes_por_uuid(
         orden_dict = {
             "id_orders": orden.id_orders,
             "mesa_id": orden.mesa_id,
+            #"mesa_number": mesa_number,
             "state": orden.state,
             "date_time": orden.date_time,
             "total": float(orden.total) if orden.total else 0.0,
@@ -601,12 +613,11 @@ def dame_resumen_orders(
 #------------------------------------------
 #------------------------------------------
 
-
-#
-@router.put("/orders/{order_uuid}/cambio_dtatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
+@router.put("/orders/{order_uuid}/cambio_estatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
     order_status: OrderStatusEnum,
+    metodo_pago: PaymentMethodEnum,  # Nuevo parámetro para cambiar el método de pago
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -636,10 +647,12 @@ async def finalizar_orden(
         if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
             raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
 
-    # Actualizar el estado de todas las órdenes
+    # Actualizar el estado y el método de pago de todas las órdenes
     for order in db_orders:
         order.order_status = order_status
+        order.metodo_pago = metodo_pago  # Actualizar el método de pago
         db.add(order)
+
 
     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
     if order_status == OrderStatusEnum.Finalizado and db_table.number != 1:
@@ -652,12 +665,14 @@ async def finalizar_orden(
     db.refresh(db_table)
 
     return OrderFinalizeResponse(
-        message=f"Cambio de estado de {len(db_orders)} orden(es) realizado con éxito",
+        message=f"Cambio de estado y método de pago de {len(db_orders)} orden(es) realizado con éxito",
         order_id=db_orders[0].id_orders,  # Usar la primera orden para la respuesta
         mesa_id=mesa_id,
         order_status=order_status,
         mesa_state=db_table.state
     )
+
+    
 #------------------------------------------
 #------------------------------------------
 
@@ -685,6 +700,7 @@ async def obtener_orden_por_uuid(
     # Construir la lista de detalles de productos
     product_details = [
         OrderDetailItem(
+            id_orders_details=detail.id_orders_details,  # Agregar el id_orders_details
             product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
             quantity=detail.quantity,
             unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
@@ -701,8 +717,16 @@ async def obtener_orden_por_uuid(
         else "Sin nombre de restaurante"
     )
 
+    # Obtener el numero de mesa
+    mesa_number = (
+        db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+        
+    )
+
     # Construir la respuesta
     response = OrderDetailsByUUIDResponse(
+        id_orders=db_order.id_orders,
+        mesa_number=db_order.mesa_id,  
         restaurant_name=restaurant_name,
         order_uuid=db_order.order_uuid,
         date_time=db_order.date_time,
@@ -746,6 +770,7 @@ async def dame_todas_las_ordenes(
         # Construir la lista de detalles de productos
         product_details = [
             OrderDetailItem(
+                id_orders_details=detail.id_orders_details,  # Agregar id_orders_details
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
@@ -762,8 +787,17 @@ async def dame_todas_las_ordenes(
             else "Sin nombre de restaurante"
         )
 
-        # Construir la respuesta para cada orden
+        # Obtener el numero de mesa
+        mesa_number = (
+            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+        
+        )
+
+        # Construir la respuesta
         response = OrderDetailsByUUIDResponse(
+            id_orders=db_order.id_orders,
+            mesa_number=db_order.mesa_id,
+            # mesa_id=db_order.mesa_id,
             restaurant_name=restaurant_name,
             order_uuid=db_order.order_uuid,
             date_time=db_order.date_time,
@@ -821,7 +855,8 @@ async def dame_ordenes_por_estado(
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
-                order_detail_status=detail.order_detail_status
+                order_detail_status=detail.order_detail_status,
+                id_orders_details=detail.id_orders_details  # Agregar id_orders_details
             )
             for detail in db_order.order_details
         ]
@@ -831,8 +866,17 @@ async def dame_ordenes_por_estado(
             if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
             else "Sin nombre de restaurante"
         )
+        # Obtener el numero de mesa
+        mesa_number = (
+            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+        
+        )
 
+        # Construir la respuesta
         response = OrderDetailsByUUIDResponse(
+            id_orders=db_order.id_orders,
+            mesa_number=db_order.mesa_id,
+            # mesa_id=db_order.mesa_id,
             restaurant_name=restaurant_name,
             order_uuid=db_order.order_uuid,
             date_time=db_order.date_time,
