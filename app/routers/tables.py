@@ -280,4 +280,61 @@ def update_table_status(
         db.rollback()
         raise HTTPException(status_code=400, detail=f"Error actualizando el estado de la mesa: {str(e)}")
 
-# ... (otros endpoints como create_table_details, generate_tables_sub permanecen igual)
+#---------------------------------------
+#---------------------------------------
+
+
+@router.post("/LiberarTodasLasMesas", response_model=dict, status_code=status.HTTP_200_OK,
+description="Libera todas las mesas del usuario autenticado, estableciendo su estado a Libre, basado en la suscripción activa. La mesa número 1 siempre permanece Libre.")
+async def release_all_tables(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Libera todas las mesas asociadas al usuario autenticado, estableciendo su estado a Libre.
+    La mesa número 1 siempre permanece Libre independientemente de la suscripción.
+    Retorna un mensaje con el número de mesas liberadas.
+    """
+    # 1. Verificar la suscripción activa
+    payment = db.query(Payments).filter(
+        Payments.user_id == current_user.id_users,
+        Payments.status == "completed",
+        Payments.subscription_end_date >= datetime.utcnow()
+    ).order_by(Payments.date.desc()).first()
+
+    if not payment:
+        raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
+
+    # 2. Determinar el número máximo de mesas según el monto de la suscripción
+    subscription_mesas = {
+        100: 1,
+        200: 16,
+        300: 26
+    }
+    max_mesas = subscription_mesas.get(payment.amount, 0)
+    if max_mesas == 0:
+        raise HTTPException(status_code=400, detail="Monto de suscripción no reconocido")
+
+    # 3. Obtener todas las mesas del usuario
+    tables = db.query(TablesModel).filter(TablesModel.user_id == current_user.id_users).all()
+    if not tables:
+        raise HTTPException(status_code=404, detail="No se encontraron mesas para este usuario")
+
+    # 4. Liberar todas las mesas (estado a Libre), respetando la mesa número 1
+    updated_tables_count = 0
+    for table in tables:
+        if table.number != 1:  # La mesa 1 siempre debe estar Libre, no la actualizamos si ya lo está
+            if table.state != TablesEnum.Libre:
+                table.state = TablesEnum.Libre
+                updated_tables_count += 1
+        else:
+            if table.state != TablesEnum.Libre:  # Asegurar que la mesa 1 esté Libre
+                table.state = TablesEnum.Libre
+                updated_tables_count += 1
+
+    # 5. Guardar los cambios en la base de datos
+    if updated_tables_count > 0:
+        db.commit()
+        return {"message": f"Se han liberado {updated_tables_count} mesas exitosamente", "mesas_liberadas": updated_tables_count}
+    else:
+        return {"message": "Todas las mesas ya estaban libres", "mesas_liberadas": 0}

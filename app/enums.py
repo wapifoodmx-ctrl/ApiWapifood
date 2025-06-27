@@ -24,6 +24,7 @@ class RoleOrders(str, Enum):
 class TablesEnum(str, Enum):
     Libre ="Libre"
     Ocupado ="Ocupado"
+    NoDisponible ="NoDisponible"
 
 class SubscriptionAmount(Enum):
     PLAN_100 = 100  # 1 mesa

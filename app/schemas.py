@@ -115,6 +115,7 @@ class OrdersDetails(BaseModel):
     quantity:int
     unit_price:Decimal
     subtotal:Decimal
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     class Config:
         from_attributes = True
 
@@ -125,6 +126,7 @@ class OrdersDetailsSchema(BaseModel):
     quantity: int
     unit_price: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
     subtotal: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         from_attributes = True
@@ -199,15 +201,19 @@ class Tables(BaseModel):
 
 
 class OrderDetailItem(BaseModel):
+    id_orders_details: int | None = None  # Nuevo campo para id_orders_details
     product_name: str
     quantity: int
     unit_price: Decimal
     subtotal: Decimal
+    order_detail_status: OrderStatusEnum 
 
     class Config:
         from_attributes = True
 
 class OrderDetailsByUUIDResponse(BaseModel):
+    id_orders: int | None = None
+    mesa_number: int 
     restaurant_name: str
     order_uuid: str
     date_time: datetime
@@ -520,6 +526,7 @@ class OrderDetailResponse(BaseModel):
     quantity: int
     unit_price: float = 0.0
     subtotal: float
+    order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
         orm_mode = True
@@ -527,6 +534,8 @@ class OrderDetailResponse(BaseModel):
 
 class OrdersResponse(BaseModel):
     id_orders: int
+    #mesa_id: int
+    mesa_number: int
     state: RoleOrders  # Cambiado de str a RoleOrders
     order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
@@ -605,6 +614,8 @@ class OrderFinalizeResponse(BaseModel):
     mesa_id: int
     order_status: OrderStatusEnum
     mesa_state: TablesEnum
+    metodo_pago: PaymentMethodEnum | None = None  # Nuevo campo para metodo_pago
+
 
     class Config:
         from_attributes = True
