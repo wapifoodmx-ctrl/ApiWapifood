@@ -189,17 +189,14 @@ class OrdersResponse(BaseModel):
 
 
 
-# Esquema Pydantic para la solicitud
-class OrderConfirmationRequest(BaseModel):
-    id_orders: int 
-    codigo_confirmacion: str
 
-    # Validación para codigo_confirmacion
-    @staticmethod
-    def validate_codigo_confirmacion(value: str) -> str:
-        if not (isinstance(value, str) and len(value) == 3 and value.isdigit()):
-            raise ValueError("El código de confirmación debe ser un string de 3 dígitos")
-        return value
+
+
+# class ConfirmationCodeResponse(BaseModel):
+#     code: str
+
+#     class Config:
+#         from_attributes = True
 
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada

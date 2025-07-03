@@ -175,7 +175,7 @@ class Orders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
-    codigo_confirmacion = Column(String(3), nullable=False)
+    codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
@@ -184,6 +184,10 @@ class Orders(Base):
     table = relationship("Tables", back_populates="orders")
     order_details = relationship("OrdersDetails", back_populates="order")
     
+class UserConfirmationCode(Base):
+    __tablename__ = "user_confirmation_codes"
+    user_id = Column(Integer, ForeignKey("users.id_users"), primary_key=True)
+    codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')
 
 class Tables(Base):
     __tablename__ = "tables"
