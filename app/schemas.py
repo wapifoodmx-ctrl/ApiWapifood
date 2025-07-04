@@ -90,6 +90,7 @@ class UserInfo(BaseModel):
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
     user_uuid: Optional[str] = None  # UUID del usuario (opcional)
+    codigo_confirmacion: Optional[str] = None  # Añadir este campo
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -404,6 +405,11 @@ class UserInfoCreate(BaseModel):
     nombre_restaurante: str | None = None  # Nombre del restaurante asociado
     user_id: Optional[int] = None
     user_uuid: Optional[str] = None  # Correcto como str
+    whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
+    horario: Optional[str] = None
+    image_user: Optional[ImageUserCreate] = None  # Nuevo campo para la imagen del usuario
+    # Nuevo campo para el código de confirmación
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         from_attributes = True

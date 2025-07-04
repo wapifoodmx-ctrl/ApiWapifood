@@ -7,11 +7,12 @@ import os
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from app.db.database import get_db
-from app.db.models import Payments, User
+from app.db.models import Payments, User, TableDetails, Tables
 from app.enums import PlanType, PaymentStatus
 from app.repository.auth import get_current_user
 from app.schemas import SubscriptionRequest
 from typing import List
+from app.enums import TablesEnum
 
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_API_KEY")
@@ -33,6 +34,11 @@ PLAN_PRICES = {
     PlanType.EMPRESARIAL: "price_1RMCkLAcLh3gfk7AkMlivuYU"
 }
 
+#------------------------------------------
+#----------------------------------
+
+
+
 # Validar los price_id al iniciar la aplicación
 for plan, price_id in PLAN_PRICES.items():
     if not price_id.startswith("price_"):
@@ -43,6 +49,78 @@ for plan, price_id in PLAN_PRICES.items():
             raise ValueError(f"El price_id para el plan {plan} no es un precio recurrente: {price_id}. Debe ser un precio recurrente para usar mode='subscription'.")
     except stripe.error.InvalidRequestError as e:
         raise ValueError(f"El price_id para el plan {plan} no es válido o no existe en tu cuenta de Stripe: {price_id}. Error: {str(e)}")
+
+
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+
+
+# @router.post("/create-checkout-session")
+# async def create_checkout_session(
+#     subscription_request: SubscriptionRequest,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     try:
+#         price_id = PLAN_PRICES.get(subscription_request.plan)
+#         if not price_id:
+#             raise HTTPException(status_code=400, detail="Plan no válido")
+
+#         # Crear un cliente de Stripe si no existe
+#         customer = stripe.Customer.create(email=current_user.email)
+#         checkout_session = stripe.checkout.Session.create(
+#             line_items=[
+#                 {"price": price_id, "quantity": 1},
+#             ],
+#             mode="subscription",
+#             customer=customer.id,
+#             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
+#             #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
+#             cancel_url="https://comandapp.h-dev.xyz/error",
+#             #cancel_url=YOUR_DOMAIN + "/payments/cancel",
+#             metadata={"user_id": str(current_user.id_users)},
+#         )
+
+#         # Log antes de guardar el registro
+#         print(f"Checkout Session creada: ID={checkout_session.id}")
+#         print(f"Customer: {checkout_session.customer}")
+#         print(f"Subscription: {checkout_session.subscription}")
+#         print(f"URL: {checkout_session.url}")
+
+#         payment = Payments(
+#             payment_method="pasarela",
+#             amount=0,
+#             date=datetime.utcnow(),
+#             user_id=current_user.id_users,
+#             stripe_customer_id=checkout_session.customer,
+#             subscription_id=checkout_session.subscription,
+#             plan=subscription_request.plan.value,
+#             status=PaymentStatus.PENDING,
+#             checkout_session_id=checkout_session.id,
+#             email=current_user.email, # Guardar el email del usuario
+#         )
+#         print(f"Registro a guardar: {payment.__dict__}")
+#         db.add(payment)
+#         try:
+#             db.commit()
+#             db.refresh(payment)
+#             print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
+#         except Exception as e:
+#             db.rollback()
+#             print(f"Error al guardar el pago: {str(e)}")
+#             raise HTTPException(status_code=500, detail=f"Error al guardar el pago: {str(e)}")
+
+#         return JSONResponse(
+#             status_code=200,
+#             content={"checkout_url": checkout_session.url}
+#         )
+
+#     except stripe.error.StripeError as e:
+#         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
+#     except Exception as e:
+#         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+
 
 @router.post("/create-checkout-session")
 async def create_checkout_session(
@@ -64,21 +142,19 @@ async def create_checkout_session(
             mode="subscription",
             customer=customer.id,
             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-            #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
             cancel_url="https://comandapp.h-dev.xyz/error",
-            #cancel_url=YOUR_DOMAIN + "/payments/cancel",
             metadata={"user_id": str(current_user.id_users)},
         )
 
         # Log antes de guardar el registro
-        print(f"Checkout Session creada: ID={checkout_session.id}")
-        print(f"Customer: {checkout_session.customer}")
-        print(f"Subscription: {checkout_session.subscription}")
+        print(f"Sesión de Checkout creada: ID={checkout_session.id}")
+        print(f"Cliente: {checkout_session.customer}")
+        print(f"Suscripción: {checkout_session.subscription}")
         print(f"URL: {checkout_session.url}")
 
         payment = Payments(
             payment_method="pasarela",
-            amount=0,
+            amount=0,  # Esto se actualizará con el webhook de Stripe
             date=datetime.utcnow(),
             user_id=current_user.id_users,
             stripe_customer_id=checkout_session.customer,
@@ -86,7 +162,7 @@ async def create_checkout_session(
             plan=subscription_request.plan.value,
             status=PaymentStatus.PENDING,
             checkout_session_id=checkout_session.id,
-            email=current_user.email, # Guardar el email del usuario
+            email=current_user.email,
         )
         print(f"Registro a guardar: {payment.__dict__}")
         db.add(payment)
@@ -94,10 +170,41 @@ async def create_checkout_session(
             db.commit()
             db.refresh(payment)
             print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
+
+            # Validar y crear mesas o detalles de mesas según el plan
+            plan_mesas = {
+                "basico": 1,
+                "profesional": 16,
+                "empresarial": 26
+            }
+            mesas = plan_mesas.get(subscription_request.plan.value, 0)
+            if mesas == 0:
+                raise HTTPException(status_code=400, detail="Plan no reconocido")
+
+            # Verificar si ya existen detalles o mesas para evitar duplicados
+            existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
+            existing_tables = db.query(Tables).filter(Tables.user_id == current_user.id_users).all()
+            if existing_details or existing_tables:
+                raise HTTPException(status_code=400, detail="Las mesas o detalles ya están creados para este usuario")
+
+            # Crear detalles de mesas (puedes elegir entre create_table_details o generate_tables_sub)
+            table_details = []
+            for i in range(1, mesas + 1):
+                detail = TableDetails(
+                    user_id=current_user.id_users,
+                    table_number=i,
+                    estado=TablesEnum.Libre,
+                    cantidad_ventas_por_mesa=0.0
+                )
+                table_details.append(detail)
+            db.add_all(table_details)
+            db.commit()
+
+            print(f"Se han creado {mesas} detalles de mesas para el usuario")
         except Exception as e:
             db.rollback()
-            print(f"Error al guardar el pago: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error al guardar el pago: {str(e)}")
+            print(f"Error al crear detalles de mesas: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error al crear detalles de mesas: {str(e)}")
 
         return JSONResponse(
             status_code=200,
@@ -108,6 +215,7 @@ async def create_checkout_session(
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+    
 
 #-----------------------------------------------------------------
 #-----------------------------------------------------------------
@@ -138,8 +246,10 @@ async def create_portal_session(
     except stripe.error.StripeError as e:
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
     
-##----------
-#----------------
+##----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+
+
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):

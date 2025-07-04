@@ -1000,7 +1000,7 @@ async def dame_ordenes_por_estado(
         # Construir la respuesta
         response = OrderDetailsByUUIDResponse(
             id_orders=db_order.id_orders,
-            mesa_number=db_order.mesa_id,
+            mesa_number=mesa_number,
             # mesa_id=db_order.mesa_id,
             restaurant_name=restaurant_name,
             order_uuid=db_order.order_uuid,

@@ -82,6 +82,7 @@ async def actualizar_o_crear_user_info(
     whatsapp: Optional[str] = Form(None),
     horario: Optional[str] = Form(None),
     image: UploadFile = File(None),
+    codigo_confirmacion: Optional[str] = Form(None),  # Nuevo parámetro opcional,
     db: Session = Depends(get_db),
     current_user: UserSchema = Depends(get_current_user)
 ):
@@ -106,6 +107,7 @@ async def actualizar_o_crear_user_info(
             whatsapp=whatsapp,
             horario=horario,
             image=image,
+            codigo_confirmacion=codigo_confirmacion,  # Nuevo campo opcional
             db=db
         )
         return nueva_info

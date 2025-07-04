@@ -145,6 +145,7 @@ class UserInfo(Base):
     nombre_restaurante = Column(String(50), nullable=True)
     whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
     horario = Column(String(50), nullable=True)  # Nuevo campo para horario
+    codigo_confirmacion = Column(String(4), nullable=True)  # Nueva columna
 
     # Relaciones
     # Clave foránea a la tabla 'users'
@@ -175,7 +176,7 @@ class Orders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
-    codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
+    #codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")

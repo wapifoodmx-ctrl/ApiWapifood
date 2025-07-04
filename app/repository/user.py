@@ -188,6 +188,7 @@ def actualizar_o_crear_user_info(
     whatsapp: Optional[str] = Form(None),
     horario: Optional[str] = Form(None),
     image: UploadFile = None,
+    codigo_confirmacion: Optional[str] = Form(None),  # Nuevo parámetro opcional,
     db: Session = Depends(get_db)
 ):
     user = db.query(User).filter(User.id_users == user_id).first()
@@ -207,6 +208,7 @@ def actualizar_o_crear_user_info(
         user_info_record.nombre_restaurante = nombre_restaurante or user_info_record.nombre_restaurante
         user_info_record.whatsapp = whatsapp or user_info_record.whatsapp
         user_info_record.horario = horario or user_info_record.horario
+        user_info_record.codigo_confirmacion = codigo_confirmacion or user_info_record.codigo_confirmacion
     else:
         user_info_record = UserInfo(
             user_id=user_id,
@@ -220,7 +222,8 @@ def actualizar_o_crear_user_info(
             alcaldia=alcaldia,
             nombre_restaurante=nombre_restaurante,
             whatsapp=whatsapp,
-            horario=horario
+            horario=horario,
+            codigo_confirmacion=codigo_confirmacion,  # Nuevo campo opcional
         )
         db.add(user_info_record)
     
