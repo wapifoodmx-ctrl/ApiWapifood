@@ -38,7 +38,7 @@ def crear_categoria(
     categoria_existente = (
         db.query(CategoriaModel)
         .filter(
-            CategoriaModel.nombre_categoria == categoria.nombre_categoria,
+            CategoriaModel.nombre_categoria == categoria.nombre_categoria.strip(),
             CategoriaModel.owner_id == current_user.id_users  # Filtrar por el usuario autenticado
         )
         .first()

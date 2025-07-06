@@ -763,13 +763,15 @@ async def finalizar_orden(
                     detail.order_detail_status = OrderStatusEnum.Finalizado
                     db.add(detail)
         
-        # Si la orden se cancela, cancela todos los detalles
+        # Si la orden se cancela, cancela todos los detalles y establece todos los precios en 0 
         if order_status == OrderStatusEnum.Cancelado:
             order_details = db.query(OrdersDetailsModel).filter(
                 OrdersDetailsModel.order_id == order.id_orders
             ).all()
             for detail in order_details:
                 detail.order_detail_status = OrderStatusEnum.Cancelado
+                detail.unit_price = 0.0  # Establecer el precio unitario a 0
+                detail.subtotal = 0.0
                 db.add(detail)
 
     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
@@ -790,15 +792,13 @@ async def finalizar_orden(
         mesa_state=db_table.state
         #codigo_confirmacion=db_orders[0].codigo_confirmacion
     )
+
 ##--------------------------------------------
 #------------------------------------------
 
 
 
 
-
-
-    
 #------------------------------------------
 #------------------------------------------
 
@@ -1020,14 +1020,75 @@ async def dame_ordenes_por_estado(
 #------------------------------------------
 #------------------------------------------
 
-@router.put("/orders/{order_uuid}/cambio_details_status", response_model=OrderDetailItem, status_code=status.HTTP_200_OK)
+# @router.put("/orders/{order_uuid}/cambio_detalles_subordenes", response_model=OrderDetailItem, status_code=status.HTTP_200_OK)
+# async def finalizar_orden(
+#     order_uuid: str,
+#     id_orders_details: int,
+#     order_detail_status: OrderStatusEnum,
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     # 1. Buscar la orden por UUID y usuario
+#     db_order = db.query(OrdersModel).filter(
+#         OrdersModel.order_uuid == order_uuid,
+#         OrdersModel.user_id == current_user.id_users
+#     ).first()
+
+#     if not db_order:
+#         raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid} o no te pertenece")
+
+#     # 2. Buscar el detalle de la orden por id_orders_details y que pertenezca a la orden encontrada
+#     db_order_detail = db.query(OrdersDetailsModel).filter(
+#         OrdersDetailsModel.id_orders_details == id_orders_details,
+#         OrdersDetailsModel.order_id == db_order.id_orders
+#     ).first()
+#     if not db_order_detail:
+#         raise HTTPException(status_code=404, detail=f"No se encontró el detalle con id {id_orders_details} para el UUID {order_uuid}")
+
+#     # Solo permitir modificar si el estado actual NO es Finalizado ni Cancelado
+#     if db_order_detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+#         raise HTTPException(
+#             status_code=400,
+#             detail=f"No se puede modificar el estado porque el detalle ya está en estado '{db_order_detail.order_detail_status.value}'"
+#         )
+    
+#     # 3. Cambiar el estado del detalle
+#     db_order_detail.order_detail_status = order_detail_status
+#     db.add(db_order_detail)
+#     db.commit()
+#     db.refresh(db_order_detail)
+
+
+#     # Refrescar la primera orden y la mesa para la respuesta
+#     # db.refresh(db_orders[0])
+#     # db.refresh(db_table)
+
+#     return OrderDetailItem(
+#         product_name=db_order_detail.product.name if db_order_detail.product and db_order_detail.product.name else "Producto desconocido",
+#         quantity=db_order_detail.quantity,
+#         unit_price=float(db_order_detail.unit_price) if db_order_detail.unit_price is not None else 0.0,
+#         subtotal=float(db_order_detail.subtotal) if db_order_detail.subtotal is not None else 0.0,
+#         order_detail_status=db_order_detail.order_detail_status
+#     )
+
+
+@router.put("/orders/{order_uuid}/cambio_details_status", response_model=List[OrderDetailItem], status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
-    id_orders_details: int,
-    order_detail_status: OrderStatusEnum,
+    id_orders_details: str = Form(...),  # Cambiado a str para aceptar una cadena
+    order_detail_status: OrderStatusEnum = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Convertir la cadena de IDs en una lista de enteros
+    try:
+        id_orders_details_list = [int(id_str) for id_str in id_orders_details.split(",")]
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="El campo id_orders_details debe contener IDs enteros separados por comas (ej. '357,358,359')"
+        )
+
     # 1. Buscar la orden por UUID y usuario
     db_order = db.query(OrdersModel).filter(
         OrdersModel.order_uuid == order_uuid,
@@ -1037,41 +1098,47 @@ async def finalizar_orden(
     if not db_order:
         raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid} o no te pertenece")
 
-    # 2. Buscar el detalle de la orden por id_orders_details y que pertenezca a la orden encontrada
-    db_order_detail = db.query(OrdersDetailsModel).filter(
-        OrdersDetailsModel.id_orders_details == id_orders_details,
+    # 2. Buscar los detalles de la orden para los id_orders_details proporcionados
+    db_order_details = db.query(OrdersDetailsModel).filter(
+        OrdersDetailsModel.id_orders_details.in_(id_orders_details_list),
         OrdersDetailsModel.order_id == db_order.id_orders
-    ).first()
-    if not db_order_detail:
-        raise HTTPException(status_code=404, detail=f"No se encontró el detalle con id {id_orders_details} para el UUID {order_uuid}")
+    ).all()
 
-    # Solo permitir modificar si el estado actual NO es Finalizado ni Cancelado
-    if db_order_detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+    # Verificar que se encontraron todos los detalles solicitados
+    if len(db_order_details) != len(id_orders_details_list):
+        found_ids = {detail.id_orders_details for detail in db_order_details}
+        missing_ids = [id_detail for id_detail in id_orders_details_list if id_detail not in found_ids]
         raise HTTPException(
-            status_code=400,
-            detail=f"No se puede modificar el estado porque el detalle ya está en estado '{db_order_detail.order_detail_status.value}'"
+            status_code=404,
+            detail=f"No se encontraron los detalles con IDs {missing_ids} para el UUID {order_uuid}"
         )
-    
-    # 3. Cambiar el estado del detalle
-    db_order_detail.order_detail_status = order_detail_status
-    db.add(db_order_detail)
+
+    # 3. Verificar que ningún detalle esté en estado Finalizado o Cancelado
+    for detail in db_order_details:
+        if detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No se puede modificar el estado porque el detalle con ID {detail.id_orders_details} ya está en estado '{detail.order_detail_status.value}'"
+            )
+
+    # 4. Cambiar el estado de los detalles seleccionados
+    updated_details = []
+    for detail in db_order_details:
+        detail.order_detail_status = order_detail_status
+        if order_detail_status == OrderStatusEnum.Cancelado:
+            detail.subtotal = 0.0 # Si se cancela, el subtotal se pone a 0
+        db.add(detail)
+        updated_details.append(OrderDetailItem(
+            product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+            quantity=detail.quantity,
+            unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+            subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+            order_detail_status=detail.order_detail_status
+        ))
+
     db.commit()
-    db.refresh(db_order_detail)
 
-
-    # Refrescar la primera orden y la mesa para la respuesta
-    # db.refresh(db_orders[0])
-    # db.refresh(db_table)
-
-    return OrderDetailItem(
-        product_name=db_order_detail.product.name if db_order_detail.product and db_order_detail.product.name else "Producto desconocido",
-        quantity=db_order_detail.quantity,
-        unit_price=float(db_order_detail.unit_price) if db_order_detail.unit_price is not None else 0.0,
-        subtotal=float(db_order_detail.subtotal) if db_order_detail.subtotal is not None else 0.0,
-        order_detail_status=db_order_detail.order_detail_status
-    )
-
-
+    return updated_details
 
 #------------------------------------------
 #------------------------------------------
