@@ -430,6 +430,7 @@ class UserInfoResponse(BaseModel):
     user_id: int | None = None
     user_uuid: Optional[str] = None  # Correctamente definido como str
     image_user: Optional[ImageUserResponse] = None
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         orm_mode = True  # Nota: orm_mode es para Pydantic V1; en V2 es from_attributes
@@ -456,6 +457,7 @@ class UserInfoByUUIDResponse(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -639,3 +641,8 @@ class OrderFinalizeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Esquema mínimo para la respuesta
+class ConfirmationCodeResponse(BaseModel):
+    codigo_confirmacion: Optional[str]

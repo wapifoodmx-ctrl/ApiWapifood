@@ -66,9 +66,9 @@ def eliminar_usuario(user_id, db: Session):
         detail="Usuario no encontrado"
     )
 
-def obtener_usuarios(db: Session):
-    data = db.query(models.User).all()
-    return data 
+# def obtener_usuarios(db: Session):
+#     data = db.query(models.User).all()
+#     return data 
 
 def actualizar_usuarios(user_id, updateUser, db: Session):
     user = db.query(models.User).filter(models.User.id_users == user_id).first()
@@ -137,7 +137,8 @@ def obtener_user_con_info(user_id: int, db: Session = Depends(get_db)) -> UserWi
             horario=user.user_info.horario,
             user_id=user.user_info.user_id,
             user_uuid=user.user_info.user_uuid,
-            image_user=image_user_response
+            image_user=image_user_response,
+            codigo_confirmacion=user.user_info.codigo_confirmacion  # Nuevo campo opcional
         )
 
     # Crear la respuesta con UserWithInfo
@@ -284,5 +285,24 @@ def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUI
         image=image_url,  # Usar la URL generada
         codigo_postal=user_info.codigo_postal,
         ciudad=user_info.ciudad,
-        alcaldia=user_info.alcaldia
+        alcaldia=user_info.alcaldia,
+        codigo_confirmacion=user_info.codigo_confirmacion  # Nuevo campo opcional
     )
+
+
+    #--------------------------------------------
+#-------------------------------------------
+
+def obtener_codigo_confirmacion_por_id(user_id: int, db: Session) -> Optional[str]:
+    """
+    Obtiene el código de confirmación de un usuario a partir de su user_id.
+    """
+    user = (
+        db.query(User)
+        .options(joinedload(User.user_info))
+        .filter(User.id_users == user_id)
+        .first()
+    )
+    if not user or not user.user_info:
+        return None
+    return user.user_info.codigo_confirmacion

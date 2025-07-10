@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
 from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
 from typing import List
+from app.schemas import ConfirmationCodeResponse
 from app.db.database import get_db
 from sqlalchemy.orm import Session
 from app.db.models import UserInfo, ImageUser, User as UserModel
@@ -35,16 +36,16 @@ def crear_usuario(usuario: User, db: Session = Depends(get_db)):
     return {"mensaje": "Usuario creado exitosamente"}
  
 
-@router.get("/", response_model=List[ShowUser], status_code=status.HTTP_200_OK)
-def obtener_usuarios(db: Session = Depends(get_db), 
-                    current_user: User = Depends(get_current_user)):
-    data = user.obtener_usuarios(db)
-    return data
+# @router.get("/", response_model=List[ShowUser], status_code=status.HTTP_200_OK)
+# def obtener_usuarios(db: Session = Depends(get_db), 
+#                     current_user: User = Depends(get_current_user)):
+#     data = user.obtener_usuarios(db)
+#     return data
 
-# @router.post('/{user_id}', status_code=status.HTTP_200_OK)  # Post para obtener el usuario a partir del id
-# def obtener_usuario(user_id: int, db: Session = Depends(get_db)):
-#     usuario = user.obtener_usuario(user_id, db)
-#     return {"mensaje": "Usuario no encontrado"}
+@router.post('/{user_id}', status_code=status.HTTP_200_OK)  # Post para obtener el usuario a partir del id
+def obtener_usuario(user_id: int, db: Session = Depends(get_db)):
+    usuario = user.obtener_usuario(user_id, db)
+    return {"mensaje": "Usuario no encontrado"}
 
 
 @router.delete('/{user_id}', status_code=status.HTTP_200_OK)
@@ -158,3 +159,23 @@ def obtener_info_por_uuid(
     if not info:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Información de usuario no encontrada")
     return info
+
+
+#------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+
+
+@router.get("/me/confirmation-code", response_model=ConfirmationCodeResponse, status_code=status.HTTP_200_OK)
+def obtener_codigo_confirmacion_por_id(
+    db: Session = Depends(get_db),
+    current_user: UserSchema = Depends(get_current_user)
+):
+    """
+    Obtiene el código de confirmación del usuario autenticado.
+    """
+    codigo = user_repo.obtener_codigo_confirmacion_por_id(current_user.id_users, db)
+    if codigo is None and not db.query(User).filter(User.id_users == current_user.id_users).first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+    if codigo is None and not db.query(UserInfo).filter(UserInfo.user_id == current_user.id_users).first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Información de usuario no encontrada")
+    return ConfirmationCodeResponse(codigo_confirmacion=codigo)
