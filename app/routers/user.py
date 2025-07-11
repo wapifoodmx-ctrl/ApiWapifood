@@ -179,3 +179,9 @@ def obtener_codigo_confirmacion_por_id(
     if codigo is None and not db.query(UserInfo).filter(UserInfo.user_id == current_user.id_users).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Información de usuario no encontrada")
     return ConfirmationCodeResponse(codigo_confirmacion=codigo)
+
+
+#------------------------------------------------------------------------
+#-------------------------------------------------------------------------
+
+# COSTO REAL DEL PRODUCTO DEL CLIENTE 

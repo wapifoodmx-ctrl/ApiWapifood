@@ -4,13 +4,13 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from app.db.models import Orders, Payments, User, RoleEnum, OrderAnalytics, OrdersDetails, OrdersDetails as OrdersDetailsModel
-from app.db.models import Orders as OrdersModel
+from app.db.models import Orders as OrdersModel, Products
 from app.oauth import get_current_user
 from app.db.database import get_db
 from dateutil.relativedelta import relativedelta
 from typing import Optional, List
 #from app.db.models import Restaurante
-from app.schemas import Metric, AnalyticsResponse, Orders as VentasSchema, VentasBasicSchema, OrderDetailsByUUIDResponse, OrderDetailItem
+from app.schemas import Metric, AnalyticsResponse, Orders as VentasSchema, VentasBasicSchema, OrderDetailsByUUIDResponse, OrderDetailItem,UtilidadesResponse
 from zoneinfo import ZoneInfo
 
 
@@ -625,3 +625,145 @@ async def ventas_por_semana(
     result.sort(key=lambda x: x.week)
 
     return result
+
+
+#------------------------------------------------------------------
+#-----------------------------------------------------------------
+
+#CALCULO DE UTILIDADES 
+
+#Utilidad = (unit_price - production_cost) * quantity
+#         = (35 - 15) * 5
+#         = 20 * 5
+#         = 100
+
+@router.get("/get-utilidades", response_model=list[UtilidadesResponse])
+async def obtenemos_utilidades(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Calcula y devuelve las utilidades de todos los productos del usuario.
+    Utilidad = (precio_venta - costo_produccion) * cantidad_vendida
+    """
+    
+    # Consulta para obtener productos vendidos con sus detalles
+    # 🆕 Agregar filtro para excluir productos sin costo de producción válido
+    productos_vendidos = (
+        db.query(
+            Products.id_products.label('product_id'),
+            Products.name.label('product_name'),
+            Products.price.label('unit_price'),
+            Products.production_cost.label('costo_produccion'),
+            func.sum(OrdersDetailsModel.quantity).label('quantity')
+        )
+        .join(OrdersDetailsModel, Products.id_products == OrdersDetailsModel.product_id)
+        .join(OrdersModel, OrdersDetailsModel.order_id == OrdersModel.id_orders)
+        .filter(
+            Products.owner_id == current_user.id_users,
+            OrdersModel.user_id == current_user.id_users,
+            Products.production_cost.is_not(None),  # 🆕 Costo no debe ser NULL
+            Products.production_cost > 0  # 🆕 Costo debe ser mayor a 0
+        )
+        .group_by(Products.id_products, Products.name, Products.price, Products.production_cost)
+        .all()
+    )
+    
+    if not productos_vendidos:
+        raise HTTPException(
+            status_code=404, 
+            detail="No se encontraron productos vendidos con costo de producción válido para este usuario"
+        )
+    
+    # Calcular y guardar utilidades por cada order_detail solo si no existen
+    for producto in productos_vendidos:
+        # Obtener todos los detalles de este producto
+        order_details = (
+            db.query(OrdersDetailsModel)
+            .join(OrdersModel, OrdersDetailsModel.order_id == OrdersModel.id_orders)
+            .join(Products, OrdersDetailsModel.product_id == Products.id_products)
+            .filter(
+                Products.id_products == producto.product_id,
+                Products.name == producto.product_name,
+                Products.owner_id == current_user.id_users,
+                OrdersModel.user_id == current_user.id_users,
+                Products.production_cost.is_not(None),  # 🆕 Validación adicional
+                Products.production_cost > 0  # 🆕 Validación adicional
+            )
+            .all()
+        )
+        
+        # Calcular utilidad para cada detalle individual solo si no existe
+        for detail in order_details:
+            # Verificar si ya tiene utilidad calculada
+            if detail.utilidades is None or detail.utilidades == 0:
+                # Obtener el producto para este detalle
+                product = db.query(Products).filter(
+                    Products.id_products == detail.product_id
+                ).first()
+                
+                # 🆕 Validación mejorada del costo de producción
+                if (product and 
+                    product.production_cost is not None and 
+                    float(product.production_cost) > 0):
+                    
+                    # Calcular utilidad unitaria
+                    utilidad_unitaria = float(product.price) - float(product.production_cost)
+                    # Calcular utilidad total para este detalle
+                    utilidad_detail = utilidad_unitaria * float(detail.quantity)
+                    
+                    # Guardar la utilidad en el order_detail solo si no existe
+                    detail.utilidades = utilidad_detail
+                    db.add(detail)
+    
+    # Confirmar los cambios en la base de datos
+    db.commit()
+    
+    # Construir la respuesta usando las utilidades calculadas de la base de datos
+    utilidades_response = []
+    for producto in productos_vendidos:
+        # Obtener la utilidad total real desde la base de datos
+        total_utilidad_db = (
+            db.query(func.sum(OrdersDetailsModel.utilidades))
+            .join(OrdersModel, OrdersDetailsModel.order_id == OrdersModel.id_orders)
+            .join(Products, OrdersDetailsModel.product_id == Products.id_products)
+            .filter(
+                Products.id_products == producto.product_id,
+                Products.name == producto.product_name,
+                Products.owner_id == current_user.id_users,
+                OrdersModel.user_id == current_user.id_users,
+                OrdersDetailsModel.utilidades.is_not(None),  # Solo considerar utilidades no nulas
+                Products.production_cost.is_not(None),  # 🆕 Validación adicional
+                Products.production_cost > 0  # 🆕 Validación adicional
+            )
+            .scalar() or 0.0
+        )
+        
+        # Calcular la venta total (suma de subtotales) desde orders_details
+        venta_total_db = (
+            db.query(func.sum(OrdersDetailsModel.subtotal))
+            .join(OrdersModel, OrdersDetailsModel.order_id == OrdersModel.id_orders)
+            .join(Products, OrdersDetailsModel.product_id == Products.id_products)
+            .filter(
+                Products.id_products == producto.product_id,
+                Products.name == producto.product_name,
+                Products.owner_id == current_user.id_users,
+                OrdersModel.user_id == current_user.id_users,
+                Products.production_cost.is_not(None),  # 🆕 Validación adicional
+                Products.production_cost > 0  # 🆕 Validación adicional
+            )
+            .scalar() or 0.0
+        )
+        
+        utilidad_item = UtilidadesResponse(
+            product_id=producto.product_id,
+            product_name=producto.product_name,
+            quantity=int(producto.quantity),
+            unit_price=producto.unit_price,
+            costo_producion=producto.costo_produccion,
+            Venta_total=float(venta_total_db),
+            utilidades=float(total_utilidad_db)
+        )
+        utilidades_response.append(utilidad_item)
+    
+    return utilidades_response

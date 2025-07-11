@@ -226,6 +226,7 @@ class Products(Base):
     name = Column(String(1500))
     description = Column(String(500))
     price = Column(Decimal(10, 2))
+    production_cost = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
@@ -253,7 +254,10 @@ class OrdersDetails(Base):
     quantity = Column(Integer)
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
-    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus
+    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus 
+    #costo_producion = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
+    utilidades = Column(Decimal(10, 2), nullable=True)  # Nueva columna para utilidades
+    
     # Relaciones
       # Relaciones
     order = relationship("Orders", back_populates="order_details")

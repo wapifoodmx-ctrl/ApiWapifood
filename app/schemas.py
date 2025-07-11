@@ -646,3 +646,17 @@ class OrderFinalizeResponse(BaseModel):
 # Esquema mínimo para la respuesta
 class ConfirmationCodeResponse(BaseModel):
     codigo_confirmacion: Optional[str]
+
+
+#esquema respuesta utilidadesss
+class UtilidadesResponse(BaseModel):
+    product_id: int
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    costo_producion: Decimal  # Nota: hay un typo aquí, debería ser "costo_produccion"
+    Venta_total: Decimal
+    utilidades: Decimal
+
+    class Config:
+        from_attributes = True
