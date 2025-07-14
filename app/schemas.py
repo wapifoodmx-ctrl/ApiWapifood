@@ -287,6 +287,7 @@ class Products(BaseModel):
     category_id: int | None = None  # Cambié a int | None
     status: StatusEnum | None = None
     image_url: List[str] = []
+    production_cost: Optional[Decimal] = None  # Nuevo campo para costo de producción
     nombre_categoria: Optional[str] = None  # Agregar el campo calculado
 
 
@@ -578,6 +579,7 @@ class ProductUpdateSchema(BaseModel):
     price: Optional[float] = None
     status: Optional[str] = None
     category_id: Optional[int] = None
+    production_cost: Optional[Decimal] = None  # Nuevo campo para costo de producción
 
 
 
