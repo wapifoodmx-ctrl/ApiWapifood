@@ -176,6 +176,8 @@ class Orders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
+    ticket_number = Column(Integer, nullable=True)  # Cambiado a Integer
+
     #codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
     # Relaciones
     user = relationship("User", back_populates="orders") #
@@ -276,7 +278,8 @@ class Payments(Base):
     stripe_payment_intent_id = Column(String(255), nullable  = True) #    id de pago de Stripe
     stripe_customer_id = Column(String(255), nullable=True)  # Nuevo campo para el cliente de Stripe
     subscription_id = Column(String(255), nullable=True)  # Nuevo campo para el ID de la suscripción
-    plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
+    #plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
+    plan = Column(SQLAlchemyEnum(PlanType, values_callable=lambda x: [e.value for e in x]), nullable=False)  # Nuevo campo para el plan, con valores de Enum
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
     checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
     email = Column(String(255), nullable=True)

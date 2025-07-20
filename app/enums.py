@@ -44,6 +44,9 @@ class PlanType(str, Enum):
     BASICO = "basico"
     PROFESIONAL = "profesional"
     EMPRESARIAL = "empresarial"
+    BASICO_IMPRESORA = "basico + impresora"
+    RESTAURANTE_IMPRESORA = "plan restaurante + impresora"
+    PLUS_RESTAURANTE_IMPRESORA = "plan restaurante plus + impresora"
 
 
 

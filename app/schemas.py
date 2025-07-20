@@ -233,6 +233,7 @@ class OrderDetailsByUUIDResponse(BaseModel):
     products: List[OrderDetailItem]
     total: Decimal
     metodo_pago: PaymentMethodEnum
+    ticket_number: Optional[int] = None  # Nuevo campo para ticket_number
 
     class Config:
         from_attributes = True
@@ -639,6 +640,7 @@ class OrderFinalizeResponse(BaseModel):
     order_status: OrderStatusEnum
     mesa_state: TablesEnum
     metodo_pago: PaymentMethodEnum | None = None  # Nuevo campo para metodo_pago
+    ticket_number: Optional[int] = None  # Nuevo campo para ticket_number
 
 
     class Config:

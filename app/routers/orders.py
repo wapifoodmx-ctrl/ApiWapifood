@@ -747,10 +747,41 @@ async def finalizar_orden(
         if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
             raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
 
+    # 🆕 Obtener el siguiente número de ticket solo si el estado es "Finalizado"
+    ticket_number = None
+    if order_status == OrderStatusEnum.Finalizado:
+        # Verificar si alguna orden ya tiene un ticket_number asignado
+        existing_ticket = None
+        for order in db_orders:
+            if order.ticket_number is not None:
+                existing_ticket = order.ticket_number
+                break
+        
+        if existing_ticket:
+            # Usar el ticket existente
+            ticket_number = existing_ticket
+        else:
+            # Obtener el último ticket_number del usuario
+            last_ticket = db.query(OrdersModel).filter(
+                OrdersModel.user_id == current_user.id_users,
+                OrdersModel.ticket_number.is_not(None)
+            ).order_by(OrdersModel.ticket_number.desc()).first()
+            
+            # Calcular el siguiente número de ticket
+            if last_ticket and last_ticket.ticket_number:
+                ticket_number = int(last_ticket.ticket_number) + 1
+            else:
+                ticket_number = 1  # Primer ticket para este usuario
+                
     # Actualizar el estado y el método de pago de todas las órdenes
     for order in db_orders:
         order.order_status = order_status
         order.metodo_pago = metodo_pago
+
+        # 🆕 Asignar el número de ticket solo si la orden se finaliza
+        if order_status == OrderStatusEnum.Finalizado:
+            order.ticket_number = ticket_number
+
         db.add(order)
 
         # Si la orden se finaliza, actualizar todos los detalles a Finalizado
@@ -789,7 +820,8 @@ async def finalizar_orden(
         order_id=db_orders[0].id_orders,
         mesa_id=mesa_id,
         order_status=order_status,
-        mesa_state=db_table.state
+        mesa_state=db_table.state,
+        ticket_number=ticket_number
         #codigo_confirmacion=db_orders[0].codigo_confirmacion
     )
 
@@ -1246,7 +1278,7 @@ async def dame_todas_las_ordenes_de_las_ultimas_24_horas(
     ).all()
 
     if not db_orders:
-        raise HTTPException(status_code=404, detail="No se encontraron órdenes de las últimas 24 horas para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes de las últimas 24 horas para este usuario")
 
     # Construir la lista de respuestas
     responses = []
@@ -1323,7 +1355,7 @@ async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
     ).all()
 
     if not db_orders:
-        raise HTTPException(status_code=404, detail="No se encontraron órdenes de los últimos 7 días para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes de los últimos 7 días para este usuario")
 
     # Construir la lista de respuestas
     responses = []
@@ -1400,7 +1432,7 @@ async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
     ).all()
 
     if not db_orders:
-        raise HTTPException(status_code=404, detail="No se encontraron órdenes de los últimos 7 días para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes de los últimos 7 días para este usuario")
 
     # Construir la lista de respuestas
     responses = []
@@ -1499,7 +1531,7 @@ async def dame_todas_las_ordenes_entre_fechas_establecidas(
 
     if not db_orders:
         raise HTTPException(
-            status_code=404, 
+            status_code=204, 
             detail=f"No se encontraron órdenes entre {fecha_inicio} y {fecha_fin} para este usuario"
         )
 
