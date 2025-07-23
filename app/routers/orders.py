@@ -527,6 +527,7 @@ def obtenemos_orders_details(
             "user_id": order.user_id,  # Requerido por el esquema
             "order_uuid": order.order_uuid,  # Requerido por el esquema
             "product_name": order.product_name or "Sin nombre",
+            "ticket_number": order.ticket_number if order.ticket_number else "Sin número de ticket",
             "details": [
                 {
                     #"id_orders_details": detail.id_orders_details,
@@ -575,7 +576,8 @@ def obtener_ordenes_por_uuid(
             "state": orden.state,
             "date_time": orden.date_time,
             "total": float(orden.total) if orden.total else 0.0,
-            "product_name": orden.product_name
+            "product_name": orden.product_name,
+            "ticke_number": orden.ticket_number if orden.ticket_number else "Sin número de ticket"
         }
         ordenes_dict.append(orden_dict)
         total_final += float(orden.total) if orden.total else 0.0
@@ -803,6 +805,7 @@ async def finalizar_orden(
                 detail.order_detail_status = OrderStatusEnum.Cancelado
                 detail.unit_price = 0.0  # Establecer el precio unitario a 0
                 detail.subtotal = 0.0
+                detail.quantity = 0  # Establecer la cantidad a 0
                 db.add(detail)
 
     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
@@ -892,7 +895,8 @@ async def obtener_orden_por_uuid(
         order_status=db_order.order_status,
         products=product_details,
         total=float(db_order.total) if db_order.total is not None else 0.0,
-        metodo_pago=db_order.metodo_pago
+        metodo_pago=db_order.metodo_pago,
+        ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible
     )
 
     return response
@@ -962,7 +966,8 @@ async def dame_todas_las_ordenes(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible
         )
         responses.append(response)
 
@@ -1033,7 +1038,8 @@ async def dame_ordenes_por_estado(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible
         )
         responses.append(response)
 
@@ -1099,7 +1105,7 @@ async def dame_ordenes_por_estado(
 @router.put("/orders/{order_uuid}/cambio_details_status", response_model=List[OrderDetailItem], status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
-    id_orders_details: str = Form(...),  # Cambiado a str para aceptar una cadena
+    id_orders_details: str = Form(...),  # Cadena de IDs separados por comas
     order_detail_status: OrderStatusEnum = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -1145,12 +1151,14 @@ async def finalizar_orden(
                 detail=f"No se puede modificar el estado porque el detalle con ID {detail.id_orders_details} ya está en estado '{detail.order_detail_status.value}'"
             )
 
-    # 4. Cambiar el estado de los detalles seleccionados
+    # 4. Cambiar el estado de los detalles seleccionados y actualizar subtotal
     updated_details = []
     for detail in db_order_details:
         detail.order_detail_status = order_detail_status
         if order_detail_status == OrderStatusEnum.Cancelado:
-            detail.subtotal = 0.0 # Si se cancela, el subtotal se pone a 0
+            detail.subtotal = 0.0  # Establecer subtotal a 0 para detalles cancelados
+            detail.unit_price = 0.0  # Establecer precio unitario a 0
+            detail.quantity = 0  # Establecer cantidad a 0
         db.add(detail)
         updated_details.append(OrderDetailItem(
             product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
@@ -1160,10 +1168,21 @@ async def finalizar_orden(
             order_detail_status=detail.order_detail_status
         ))
 
+    # 5. Recalcular el total de la orden
+    all_order_details = db.query(OrdersDetailsModel).filter(
+        OrdersDetailsModel.order_id == db_order.id_orders,
+        OrdersDetailsModel.order_detail_status != OrderStatusEnum.Cancelado
+    ).all()
+    
+    new_total = sum(float(detail.subtotal) for detail in all_order_details if detail.subtotal is not None)
+    db_order.total = new_total  # Actualizar el total en la orden
+    db.add(db_order)
+
+    # 6. Confirmar los cambios en la base de datos
     db.commit()
+    db.refresh(db_order)  # Refrescar la orden para asegurar que los datos estén actualizados
 
     return updated_details
-
 #------------------------------------------
 #------------------------------------------
 
@@ -1244,7 +1263,8 @@ async def obtener_ultima_orden_por_mesa(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
         )
         responses.append(response)
 
@@ -1321,7 +1341,8 @@ async def dame_todas_las_ordenes_de_las_ultimas_24_horas(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
         )
         responses.append(response)
 
@@ -1398,7 +1419,8 @@ async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
         )
         responses.append(response)
 
@@ -1475,7 +1497,8 @@ async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
         )
         responses.append(response)
 
@@ -1576,7 +1599,8 @@ async def dame_todas_las_ordenes_entre_fechas_establecidas(
             order_status=db_order.order_status,
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
+            metodo_pago=db_order.metodo_pago,
+            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
         )
         responses.append(response)
 
