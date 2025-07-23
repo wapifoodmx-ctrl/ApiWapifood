@@ -29,7 +29,7 @@ def crear_usuario(usuario, db: Session):
             name=usuario["name"],
             email=usuario["email"],
             password=Hash.hash_password(usuario["password"]),
-            rol=usuario["rol"]
+            rol=usuario.get("rol", "admin"),  # Asignar rol por defecto si no se proporciona
         )
         db.add(nuevo_usuario)
         db.commit()
