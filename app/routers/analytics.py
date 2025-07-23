@@ -381,7 +381,16 @@ class SalesResponse(BaseModel):
     total_sales: float
 
 # Endpoint 1: Ventas agrupadas por año
-@router.get("/ventas_por_año", response_model=List[SalesResponse], status_code=status.HTTP_200_OK,
+
+# New schema for aggregated sales data
+class VentasPorAñoSchema(BaseModel):
+    date: str | None
+    value: float
+
+    class Config:
+        from_attributes = True
+
+@router.get("/ventas_por_año", response_model=List[VentasPorAñoSchema], status_code=status.HTTP_200_OK,
             description="Obtiene las ventas totales agrupadas por año entre la fecha de inicio y la fecha de fin especificadas")
 async def ventas_por_año(
     fecha_inicio: str,  # Formato: YYYY-MM-DD
@@ -420,30 +429,145 @@ async def ventas_por_año(
     if not sales:
         raise HTTPException(status_code=404, detail="No se encontraron ventas en el rango especificado")
 
-    return [{"period": str(int(year)), "total_sales": float(total_sales)} for year, total_sales in sales]
+    # Construct response matching VentasPorAñoSchema
+    ventas_dicts = [
+        {
+            "date": f"{int(year)}-01-01T00:00:00",
+            "value": float(total_sales)
+        }
+        for year, total_sales in sales
+    ]
+
+    return [VentasPorAñoSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
+
 #------------------------------------------------------------------
 #------------------------------------------------------------------
 # Endpoint 2: Ventas agrupadas por mes (corregido para MySQL)
 # Esquema para la respuesta agrupada por mes
-class MonthlySalesResponse(BaseModel):
-    month: str  # Formato: YYYY-MM
-    orders: List[OrderDetailsByUUIDResponse]
+# class MonthlySalesResponse(BaseModel):
+#     month: str  # Formato: YYYY-MM
+#     orders: List[OrderDetailsByUUIDResponse]
 
-# Endpoint: Ventas agrupadas por el mes más reciente
-@router.get("/ventas_por_mes_reciente", response_model=List[MonthlySalesResponse], status_code=status.HTTP_200_OK,
-            description="Obtiene todas las órdenes de los últimos 30 días agrupadas por mes (YYYY-MM)")
+# # Endpoint: Ventas agrupadas por el mes más reciente
+# @router.get("/ventas_por_mes_reciente", response_model=List[MonthlySalesResponse], status_code=status.HTTP_200_OK,
+#             description="Obtiene todas las órdenes de los últimos 30 días agrupadas por mes (YYYY-MM)")
+# async def ventas_por_mes_reciente(
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     """
+#     Devuelve las órdenes detalladas agrupadas por el mes más reciente (últimos 30 días).
+#     """
+#     # Calcular la fecha de hace 30 días y la fecha de hoy (en CST)
+#     end = datetime.now(ZoneInfo("America/Chicago"))
+#     start = end - timedelta(days=30)
+
+#     # Consulta para obtener las órdenes con sus relaciones
+#     db_orders = (
+#         db.query(OrdersModel)
+#         .filter(
+#             OrdersModel.user_id == current_user.id_users,
+#             OrdersModel.date_time >= start,
+#             OrdersModel.date_time <= end
+#         )
+#         .options(
+#             joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
+#             joinedload(OrdersModel.user).joinedload(User.user_info),
+#             joinedload(OrdersModel.table)
+#         )
+#         .execution_options(compiled_cache=None)  # Deshabilitar caché para evitar errores
+#         .all()
+#     )
+
+#     if not db_orders:
+#         raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 30 días para este usuario")
+
+#     # Agrupar las órdenes por mes en Python
+#     monthly_orders = {}
+#     for db_order in db_orders:
+#         # Calcular el mes (YYYY-MM)
+#         month_key = db_order.date_time.strftime("%Y-%m")
+
+#         if month_key not in monthly_orders:
+#             monthly_orders[month_key] = []
+
+#         # Construir los detalles de los productos
+#         product_details = [
+#             OrderDetailItem(
+#                 id_orders_details=detail.id_orders_details,
+#                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+#                 quantity=detail.quantity,
+#                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+#                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+#                 order_detail_status=detail.order_detail_status
+#             )
+#             for detail in db_order.order_details
+#         ]
+
+#         # Obtener el nombre del restaurante
+#         restaurant_name = (
+#             db_order.user.user_info.nombre_restaurante
+#             if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
+#             else "Sin nombre de restaurante"
+#         )
+
+#         # Obtener el número de mesa
+#         mesa_number = (
+#             db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+#         )
+
+#         # Construir la respuesta para la orden
+#         response = OrderDetailsByUUIDResponse(
+#             id_orders=db_order.id_orders,
+#             mesa_number=mesa_number,
+#             restaurant_name=restaurant_name,
+#             order_uuid=db_order.order_uuid,
+#             date_time=db_order.date_time,
+#             state=db_order.state,
+#             order_status=db_order.order_status,
+#             products=product_details,
+#             total=float(db_order.total) if db_order.total is not None else 0.0,
+#             metodo_pago=db_order.metodo_pago
+#         )
+#         monthly_orders[month_key].append(response)
+
+#     # Convertir a la respuesta final
+#     result = [
+#         MonthlySalesResponse(month=month, orders=orders)
+#         for month, orders in monthly_orders.items()
+#     ]
+
+#     # Ordenar por mes
+#     result.sort(key=lambda x: x.month)
+
+#     return result
+
+#NUEVA VERSIUON DEL ENPOINT ANTERIOR 
+
+
+# Esquema para órdenes individuales
+class VentasBasicSchema(BaseModel):
+    id_orders: int | None
+    date: str | None
+    value: float
+
+    class Config:
+        from_attributes = True
+
+@router.get("/ventas_por_mes_reciente", response_model=List[VentasBasicSchema], status_code=status.HTTP_200_OK,
+            description="Obtiene todas las órdenes de los últimos 30 días con id_orders, date y value")
 async def ventas_por_mes_reciente(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Devuelve las órdenes detalladas agrupadas por el mes más reciente (últimos 30 días).
+    Devuelve las órdenes de los últimos 30 días en formato básico (id_orders, date, value).
     """
-    # Calcular la fecha de hace 30 días y la fecha de hoy (en CST)
-    end = datetime.now(ZoneInfo("America/Chicago"))
+    # Calcular la fecha de hace 30 días y la fecha de hoy (en la Ciudad de México)
+    end = datetime.now(ZoneInfo("America/Mexico_City"))
     start = end - timedelta(days=30)
 
-    # Consulta para obtener las órdenes con sus relaciones
+    # Consulta para obtener las órdenes
     db_orders = (
         db.query(OrdersModel)
         .filter(
@@ -451,101 +575,154 @@ async def ventas_por_mes_reciente(
             OrdersModel.date_time >= start,
             OrdersModel.date_time <= end
         )
-        .options(
-            joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
-            joinedload(OrdersModel.user).joinedload(User.user_info),
-            joinedload(OrdersModel.table)
-        )
-        .execution_options(compiled_cache=None)  # Deshabilitar caché para evitar errores
         .all()
     )
 
     if not db_orders:
         raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 30 días para este usuario")
 
-    # Agrupar las órdenes por mes en Python
-    monthly_orders = {}
-    for db_order in db_orders:
-        # Calcular el mes (YYYY-MM)
-        month_key = db_order.date_time.strftime("%Y-%m")
-
-        if month_key not in monthly_orders:
-            monthly_orders[month_key] = []
-
-        # Construir los detalles de los productos
-        product_details = [
-            OrderDetailItem(
-                id_orders_details=detail.id_orders_details,
-                product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
-                quantity=detail.quantity,
-                unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
-                order_detail_status=detail.order_detail_status
-            )
-            for detail in db_order.order_details
-        ]
-
-        # Obtener el nombre del restaurante
-        restaurant_name = (
-            db_order.user.user_info.nombre_restaurante
-            if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
-            else "Sin nombre de restaurante"
-        )
-
-        # Obtener el número de mesa
-        mesa_number = (
-            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
-        )
-
-        # Construir la respuesta para la orden
-        response = OrderDetailsByUUIDResponse(
-            id_orders=db_order.id_orders,
-            mesa_number=mesa_number,
-            restaurant_name=restaurant_name,
-            order_uuid=db_order.order_uuid,
-            date_time=db_order.date_time,
-            state=db_order.state,
-            order_status=db_order.order_status,
-            products=product_details,
-            total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
-        )
-        monthly_orders[month_key].append(response)
-
-    # Convertir a la respuesta final
-    result = [
-        MonthlySalesResponse(month=month, orders=orders)
-        for month, orders in monthly_orders.items()
+    # Convertir las órdenes a VentasBasicSchema
+    ventas_dicts = [
+        {
+            "id_orders": order.id_orders,
+            "date": order.date_time.astimezone(ZoneInfo("America/Mexico_City")).isoformat() if order.date_time else None,
+            "value": float(order.total) if order.total is not None else 0.0
+        }
+        for order in db_orders
     ]
 
-    # Ordenar por mes
-    result.sort(key=lambda x: x.month)
-
-    return result
+    return [VentasBasicSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
 
 #------------------------------------------------------------------
 # Endpoint: Ventas agrupadas por semana
 
-# Esquema para la respuesta agrupada por semana
-class WeeklySalesResponse(BaseModel):
-    week: str  # Formato: YYYY-W##
-    orders: List[OrderDetailsByUUIDResponse]
+# # Esquema para la respuesta agrupada por semana
+# class WeeklySalesResponse(BaseModel):
+#     week: str  # Formato: YYYY-W##
+#     orders: List[OrderDetailsByUUIDResponse]
 
-# Endpoint: Ventas agrupadas por la semana más reciente
-@router.get("/ventas_por_semana", response_model=List[WeeklySalesResponse], status_code=status.HTTP_200_OK,
-            description="Obtiene todas las órdenes de los últimos 7 días agrupadas por semana (YYYY-W##)")
+# # Endpoint: Ventas agrupadas por la semana más reciente
+# @router.get("/ventas_por_semana", response_model=List[WeeklySalesResponse], status_code=status.HTTP_200_OK,
+#             description="Obtiene todas las órdenes de los últimos 7 días agrupadas por semana (YYYY-W##)")
+# async def ventas_por_semana(
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     """
+#     Devuelve las órdenes detalladas agrupadas por la semana más reciente (últimos 7 días).
+#     """
+#     # Calcular la fecha de hace 7 días y la fecha de hoy
+#     end = datetime.now()
+#     start = end - timedelta(days=7)
+
+#     # Consulta para obtener las órdenes con sus relaciones
+#     db_orders = (
+#         db.query(OrdersModel)
+#         .filter(
+#             OrdersModel.user_id == current_user.id_users,
+#             OrdersModel.date_time >= start,
+#             OrdersModel.date_time <= end
+#         )
+#         .options(
+#             joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
+#             joinedload(OrdersModel.user).joinedload(User.user_info),
+#             joinedload(OrdersModel.table)
+#         )
+#         .execution_options(compiled_cache=None)  # Deshabilitar caché para evitar el error
+#         .all()
+#     )
+
+#     if not db_orders:
+#         raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 7 días para este usuario")
+
+#     # Agrupar las órdenes por semana en Python
+#     weekly_orders = {}
+#     for db_order in db_orders:
+#         # Calcular la semana ISO (YYYY-W##)
+#         year, week, _ = db_order.date_time.isocalendar()
+#         week_key = f"{year}-W{week:02d}"
+
+#         if week_key not in weekly_orders:
+#             weekly_orders[week_key] = []
+
+#         # Construir los detalles de los productos
+#         product_details = [
+#             OrderDetailItem(
+#                 id_orders_details=detail.id_orders_details,
+#                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+#                 quantity=detail.quantity,
+#                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+#                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+#                 order_detail_status=detail.order_detail_status
+#             )
+#             for detail in db_order.order_details
+#         ]
+
+#         # Obtener el nombre del restaurante
+#         restaurant_name = (
+#             db_order.user.user_info.nombre_restaurante
+#             if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
+#             else "Sin nombre de restaurante"
+#         )
+
+#         # Obtener el número de mesa
+#         mesa_number = (
+#             db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+#         )
+
+#         # Construir la respuesta para la orden
+#         response = OrderDetailsByUUIDResponse(
+#             id_orders=db_order.id_orders,
+#             mesa_number=mesa_number,
+#             restaurant_name=restaurant_name,
+#             order_uuid=db_order.order_uuid,
+#             date_time=db_order.date_time,
+#             state=db_order.state,
+#             order_status=db_order.order_status,
+#             products=product_details,
+#             total=float(db_order.total) if db_order.total is not None else 0.0,
+#             metodo_pago=db_order.metodo_pago
+#         )
+#         weekly_orders[week_key].append(response)
+
+#     # Convertir a la respuesta final
+#     result = [
+#         WeeklySalesResponse(week=week, orders=orders)
+#         for week, orders in weekly_orders.items()
+#     ]
+
+#     # Ordenar por semana
+#     result.sort(key=lambda x: x.week)
+
+#     return result
+
+#NUEVO ENPOINT DE SEMANAACTUALZIADO 
+
+
+# Esquema para órdenes individuales
+class VentasBasicSchema(BaseModel):
+    id_orders: int | None
+    date: str | None
+    value: float
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/ventas_por_semana", response_model=List[VentasBasicSchema], status_code=status.HTTP_200_OK,
+            description="Obtiene todas las órdenes de los últimos 7 días con id_orders, date y value")
 async def ventas_por_semana(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Devuelve las órdenes detalladas agrupadas por la semana más reciente (últimos 7 días).
+    Devuelve las órdenes de los últimos 7 días en formato básico (id_orders, date, value).
     """
-    # Calcular la fecha de hace 7 días y la fecha de hoy
-    end = datetime.now()
+    # Calcular la fecha de hace 7 días y la fecha de hoy (en la Ciudad de México)
+    end = datetime.now(ZoneInfo("America/Mexico_City"))
     start = end - timedelta(days=7)
 
-    # Consulta para obtener las órdenes con sus relaciones
+    # Consulta para obtener las órdenes
     db_orders = (
         db.query(OrdersModel)
         .filter(
@@ -553,79 +730,23 @@ async def ventas_por_semana(
             OrdersModel.date_time >= start,
             OrdersModel.date_time <= end
         )
-        .options(
-            joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
-            joinedload(OrdersModel.user).joinedload(User.user_info),
-            joinedload(OrdersModel.table)
-        )
-        .execution_options(compiled_cache=None)  # Deshabilitar caché para evitar el error
         .all()
     )
 
     if not db_orders:
         raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 7 días para este usuario")
 
-    # Agrupar las órdenes por semana en Python
-    weekly_orders = {}
-    for db_order in db_orders:
-        # Calcular la semana ISO (YYYY-W##)
-        year, week, _ = db_order.date_time.isocalendar()
-        week_key = f"{year}-W{week:02d}"
-
-        if week_key not in weekly_orders:
-            weekly_orders[week_key] = []
-
-        # Construir los detalles de los productos
-        product_details = [
-            OrderDetailItem(
-                id_orders_details=detail.id_orders_details,
-                product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
-                quantity=detail.quantity,
-                unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-                subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
-                order_detail_status=detail.order_detail_status
-            )
-            for detail in db_order.order_details
-        ]
-
-        # Obtener el nombre del restaurante
-        restaurant_name = (
-            db_order.user.user_info.nombre_restaurante
-            if db_order.user.user_info and db_order.user.user_info.nombre_restaurante
-            else "Sin nombre de restaurante"
-        )
-
-        # Obtener el número de mesa
-        mesa_number = (
-            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
-        )
-
-        # Construir la respuesta para la orden
-        response = OrderDetailsByUUIDResponse(
-            id_orders=db_order.id_orders,
-            mesa_number=mesa_number,
-            restaurant_name=restaurant_name,
-            order_uuid=db_order.order_uuid,
-            date_time=db_order.date_time,
-            state=db_order.state,
-            order_status=db_order.order_status,
-            products=product_details,
-            total=float(db_order.total) if db_order.total is not None else 0.0,
-            metodo_pago=db_order.metodo_pago
-        )
-        weekly_orders[week_key].append(response)
-
-    # Convertir a la respuesta final
-    result = [
-        WeeklySalesResponse(week=week, orders=orders)
-        for week, orders in weekly_orders.items()
+    # Convertir las órdenes a VentasBasicSchema
+    ventas_dicts = [
+        {
+            "id_orders": order.id_orders,
+            "date": order.date_time.astimezone(ZoneInfo("America/Mexico_City")).isoformat() if order.date_time else None,
+            "value": float(order.total) if order.total is not None else 0.0
+        }
+        for order in db_orders
     ]
 
-    # Ordenar por semana
-    result.sort(key=lambda x: x.week)
-
-    return result
-
+    return [VentasBasicSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
 
 #------------------------------------------------------------------
 #-----------------------------------------------------------------
