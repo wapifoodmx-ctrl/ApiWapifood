@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, computed_field
+from pydantic import BaseModel, field_validator, computed_field, EmailStr
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -664,3 +664,17 @@ class UtilidadesResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Esquema para solicitud de restablecimiento de contraseña
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+# Esquema para confirmación de restablecimiento de contraseña
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+# Esquema para respuesta de confirmación
+class PasswordResetResponse(BaseModel):
+    message: str

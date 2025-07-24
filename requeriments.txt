@@ -16,3 +16,4 @@ stripe
 pyotp
 stripe
 python-dateutil
+resend

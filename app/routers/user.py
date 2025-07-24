@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
 from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
+from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
 from typing import List
 from app.schemas import ConfirmationCodeResponse
 from app.db.database import get_db
@@ -184,4 +185,18 @@ def obtener_codigo_confirmacion_por_id(
 #------------------------------------------------------------------------
 #-------------------------------------------------------------------------
 
-# COSTO REAL DEL PRODUCTO DEL CLIENTE 
+# cambio de contraseña 
+
+@router.post("/password-reset/request", status_code=status.HTTP_200_OK, response_model=PasswordResetResponse)
+def request_password_reset(request: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    Solicita un restablecimiento de contraseña enviando un enlace por correo.
+    """
+    return user_repo.request_password_reset(request, db)
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_200_OK, response_model=PasswordResetResponse)
+def confirm_password_reset(confirm: PasswordResetConfirm, db: Session = Depends(get_db)):
+    """
+    Confirma el restablecimiento de contraseña usando el token y la nueva contraseña.
+    """
+    return user_repo.confirm_password_reset(confirm, db)

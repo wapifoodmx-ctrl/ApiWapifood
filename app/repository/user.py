@@ -2,6 +2,7 @@
 from sqlalchemy.orm import Session, joinedload
 from app.db import models
 from app.schemas import User, UserInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse, UserWithInfo, ImageUserResponse
+from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
 from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
@@ -13,8 +14,24 @@ from pydantic import ValidationError
 import json
 import os
 import shutil
+import resend
 from app.db.models import  User
 import logging
+from app.token import create_access_token, verify_token
+from resend.exceptions import InvalidApiKeyError, ResendError
+import requests
+from requests.exceptions import HTTPError
+
+
+
+
+# Configurar Resend
+#resend.api_key = "re_iULuVUvh_9N6hPef4vWYGkWAkcuBdawuc"
+#BASE_URL = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
+# Configurar Resend
+resend.api_key = os.getenv("RESEND_API_KEY", "re_UemXQYSm_4AWzQnvSrDtMzTmPvbdgqDEF")
+BASE_URL = os.getenv("BASE_URL", "https://wapifood.com")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@wapifood.com")  # Usar dominio verificado
 
 
 
@@ -306,3 +323,140 @@ def obtener_codigo_confirmacion_por_id(user_id: int, db: Session) -> Optional[st
     if not user or not user.user_info:
         return None
     return user.user_info.codigo_confirmacion
+
+#PARTE DE RESETEO DE CONTRASEÑA
+#-------------------------------------------
+#-------------------------------------------
+
+def request_password_reset(request: PasswordResetRequest, db: Session):
+    """
+    Procesa una solicitud de restablecimiento de contraseña enviando un enlace por correo.
+    """
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró un usuario con ese correo"
+        )
+    
+    # Generar token de restablecimiento
+    token = create_access_token(data={"sub": user.email}, token_type="reset")
+    reset_link = f"{BASE_URL}/user/password-reset/confirm?token={token}"
+    
+    # Enviar correo con Resend
+    try:
+        headers = {
+            "Authorization": f"Bearer {resend.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": FROM_EMAIL,
+            "to": user.email,
+            "subject": "Restablecimiento de Contraseña - WapiFood",
+            "html": f"""
+                <p>Hola {user.name},</p>
+                <p>Has solicitado restablecer tu contraseña para WapiFood. Haz clic en el siguiente enlace para continuar:</p>
+                <p><a href="{reset_link}">Restablecer Contraseña</a></p>
+                <p>Este enlace es válido por 15 minutos.</p>
+                <p>Si no solicitaste este cambio, por favor ignora este correo o contacta a soporte.</p>
+                <p>Saludos,<br>Equipo WapiFood</p>
+            """,
+            "headers": {
+                "List-Unsubscribe": f"<mailto:unsubscribe@wapifood.com>",
+                "X-Priority": "3"
+            }
+        }
+        response = requests.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers=headers
+        )
+        response.raise_for_status()
+        logger.info(f"Correo de restablecimiento enviado a {user.email}, respuesta de Resend: {response.json()}")
+    except HTTPError as e:
+        logger.error(f"Error HTTP al enviar correo: {str(e)}")
+        logger.error(f"Respuesta de Resend: {e.response.text}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error enviando correo: {e.response.text}"
+        )
+    except InvalidApiKeyError:
+        logger.error("Clave API de Resend inválida")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error enviando correo: Clave API de Resend inválida"
+        )
+    except ResendError as e:
+        logger.error(f"Error de Resend: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error enviando correo: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Error desconocido: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error enviando correo: {str(e)}"
+        )
+    
+    return PasswordResetResponse(message="Correo de restablecimiento enviado")
+
+def confirm_password_reset(confirm: PasswordResetConfirm, db: Session):
+    """
+    Confirma el restablecimiento de contraseña usando el token y actualiza la contraseña.
+    """
+    try:
+        token_data = verify_token(confirm.token, token_type="reset")
+    except HTTPException:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado"
+        )
+    
+    user = db.query(User).filter(User.email == token_data.username).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no encontrado"
+        )
+    
+    # Actualizar contraseña
+    user.password = Hash.hash_password(confirm.new_password)
+    db.commit()
+    db.refresh(user)
+    
+    # Enviar correo de confirmación
+    try:
+        headers = {
+            "Authorization": f"Bearer {resend.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "from": FROM_EMAIL,
+            "to": user.email,
+            "subject": "Contraseña Actualizada - WapiFood",
+            "html": f"""
+                <p>Hola {user.name},</p>
+                <p>Tu contraseña para WapiFood ha sido actualizada exitosamente.</p>
+                <p>Si no realizaste este cambio, contacta con soporte inmediatamente.</p>
+                <p>Saludos,<br>Equipo WapiFood</p>
+            """,
+            "headers": {
+                "List-Unsubscribe": f"<mailto:unsubscribe@wapifood.com>",
+                "X-Priority": "3"
+            }
+        }
+        response = requests.post(
+            "https://api.resend.com/emails",
+            json=payload,
+            headers=headers
+        )
+        response.raise_for_status()
+        logger.info(f"Correo de confirmación enviado a {user.email}, respuesta de Resend: {response.json()}")
+    except HTTPError as e:
+        logger.error(f"Error HTTP al enviar correo de confirmación: {str(e)}")
+        logger.error(f"Respuesta de Resend: {e.response.text}")
+    except Exception as e:
+        logger.error(f"Error enviando correo de confirmación: {str(e)}")
+    
+    return PasswordResetResponse(message="Contraseña actualizada exitosamente")
