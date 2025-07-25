@@ -579,7 +579,7 @@ async def ventas_por_mes_reciente(
     )
 
     if not db_orders:
-        raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 30 días para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes en los últimos 30 días para este usuario")
 
     # Convertir las órdenes a VentasBasicSchema
     ventas_dicts = [
@@ -734,7 +734,7 @@ async def ventas_por_semana(
     )
 
     if not db_orders:
-        raise HTTPException(status_code=404, detail="No se encontraron órdenes en los últimos 7 días para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes en los últimos 7 días para este usuario")
 
     # Convertir las órdenes a VentasBasicSchema
     ventas_dicts = [
@@ -792,7 +792,7 @@ async def obtenemos_utilidades(
     
     if not productos_vendidos:
         raise HTTPException(
-            status_code=404, 
+            status_code=204, 
             detail="No se encontraron productos vendidos con costo de producción válido para este usuario"
         )
     

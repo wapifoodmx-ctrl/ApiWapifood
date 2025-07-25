@@ -259,7 +259,7 @@ class ImageResponse(BaseModel):
     @property
     def url(self):
         # Construye la URL completa (ajusta según tu configuración)
-        return f"https://comandapp-api.h-dev.xyz/static/uploads/{self.file_name}"
+        return f"https://api.wapifood.com/static/uploads/{self.file_name}"
         
         #return f"http://192.168.1.69/static/uploads/{self.file_name}"
 
@@ -376,14 +376,14 @@ class ImageUserResponse(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")  # Alinear con products.py
+        base_url = os.getenv("BASE_URL", "https://api.wapifood.com")  # Alinear con products.py
         return f"{base_url}/static/uploads/{self.file_name}"
 
     class Config:
         from_attributes = True
 
-        #https://comandapp-api.h-dev.xyz
-        #https://comandapp-api.h-dev.xyz
+        #https://api.wapifood.com
+        #https://api.wapifood.com
 
 # class ImageUserResponse(BaseModel):
 #     id: int | None = None

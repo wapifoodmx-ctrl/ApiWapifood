@@ -349,8 +349,8 @@ async def create_checkout_session(
             ],
             mode="subscription",
             customer=customer.id,
-            success_url="https://comandapp-api.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="https://comandapp-api.h-dev.xyz/error",
+            success_url="https://wapifood.com/success/?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="https://wapifood.com/error",
             metadata={"user_id": str(current_user.id_users)},
         )
 

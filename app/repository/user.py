@@ -27,10 +27,10 @@ from requests.exceptions import HTTPError
 
 # Configurar Resend
 #resend.api_key = "re_iULuVUvh_9N6hPef4vWYGkWAkcuBdawuc"
-#BASE_URL = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
+#BASE_URL = os.getenv("BASE_URL", "https://api.wapifood.com")
 # Configurar Resend
 resend.api_key = os.getenv("RESEND_API_KEY", "re_UemXQYSm_4AWzQnvSrDtMzTmPvbdgqDEF")
-BASE_URL = os.getenv("BASE_URL", "https://wapifood.com")
+BASE_URL = os.getenv("BASE_URL", "https://api.wapifood.com")
 FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@wapifood.com")  # Usar dominio verificado
 
 
@@ -290,7 +290,7 @@ def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUI
     # Buscar la imagen asociada, si existe
     image_user = db.query(ImageUser).filter(ImageUser.user_info_id == user_info.id_user_info).first()
     # Construir la URL manualmente, como en ImageUserResponse
-    base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
+    base_url = os.getenv("BASE_URL", "https://api.wapifood.com")
     image_url = f"{base_url}/static/uploads/{image_user.file_name}" if image_user else None
 
     # Crear la respuesta usando el esquema UserInfoByUUIDResponse
