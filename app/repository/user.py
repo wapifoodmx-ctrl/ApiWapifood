@@ -401,6 +401,11 @@ def request_password_reset(request: PasswordResetRequest, db: Session):
     
     return PasswordResetResponse(message="Correo de restablecimiento enviado")
 
+
+#-------------------------------------------
+#-------------------------------------------
+
+
 def confirm_password_reset(confirm: PasswordResetConfirm, db: Session):
     """
     Confirma el restablecimiento de contraseña usando el token y actualiza la contraseña.
