@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, status, HTTPException, Form, UploadFile, File
 from app.schemas import User, UserId, ShowUser, UserInfo, UserWithInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse
-from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
+from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse, EmailVerificationRequest, EmailVerificationResponse
 from typing import List
 from app.schemas import ConfirmationCodeResponse
 from app.db.database import get_db
@@ -12,6 +12,10 @@ from app.schemas import User as UserSchema
 from app.repository import user as user_repo
 from pydantic import ValidationError
 from typing import Optional
+from jose import jwt, JWTError
+from app.repository.user import SECRET_KEY, ALGORITHM
+from fastapi.responses import HTMLResponse
+
 
 
  # Importa directamente la función
@@ -187,8 +191,9 @@ def obtener_codigo_confirmacion_por_id(
 
 # cambio de contraseña 
 
-@router.post("/password-reset/request", status_code=status.HTTP_200_OK, response_model=PasswordResetResponse)
-def request_password_reset(request: PasswordResetRequest, db: Session = Depends(get_db)):
+
+@router.post("/password-reset/request", status_code=status.HTTP_200_OK, response_model=EmailVerificationResponse)
+def request_password_reset(request: EmailVerificationRequest, db: Session = Depends(get_db)):
     """
     Solicita un restablecimiento de contraseña enviando un enlace por correo.
     """

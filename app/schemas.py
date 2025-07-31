@@ -335,6 +335,7 @@ class Login(BaseModel):
 
 class TokenData(BaseModel):
     name: Union[str, None] = None
+    username: str | None = None
 
 # Nuevos esquemas para imágenes
 class ImageCreate(BaseModel):
@@ -677,4 +678,14 @@ class PasswordResetConfirm(BaseModel):
 
 # Esquema para respuesta de confirmación
 class PasswordResetResponse(BaseModel):
+    message: str
+
+
+
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+class EmailVerificationResponse(BaseModel):
+    token: str
+    user_uuid: str
     message: str

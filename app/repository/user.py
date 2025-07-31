@@ -2,7 +2,7 @@
 from sqlalchemy.orm import Session, joinedload
 from app.db import models
 from app.schemas import User, UserInfo, UserInfoCreate, UserInfoResponse, UserInfoByUUIDResponse, UserWithInfo, ImageUserResponse
-from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse
+from app.schemas import PasswordResetRequest, PasswordResetConfirm, PasswordResetResponse, EmailVerificationRequest, EmailVerificationResponse
 from fastapi import HTTPException, status
 from app.hashing import Hash
 from app.db.models import UserInfo, ImageUser, User
@@ -11,9 +11,12 @@ from fastapi import File, UploadFile, HTTPException, status,Form, Depends
 from app.db.database import get_db
 from typing import Optional
 from pydantic import ValidationError
+from jose import jwt, JWTError
 import json
 import os
 import shutil
+from datetime import timedelta
+from uuid import UUID
 import resend
 from app.db.models import  User
 import logging
@@ -21,8 +24,17 @@ from app.token import create_access_token, verify_token
 from resend.exceptions import InvalidApiKeyError, ResendError
 import requests
 from requests.exceptions import HTTPError
+import logging
 
+logger = logging.getLogger(__name__)
 
+SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
+
+# """
+# Algoritmo de firma utilizado para la generación del token JWT.
+# En este caso, se usa el algoritmo HS256 (HMAC con SHA-256).
+# """
+ALGORITHM = "HS256"
 
 
 # Configurar Resend
@@ -31,7 +43,7 @@ from requests.exceptions import HTTPError
 # Configurar Resend
 resend.api_key = os.getenv("RESEND_API_KEY", "re_UemXQYSm_4AWzQnvSrDtMzTmPvbdgqDEF")
 BASE_URL = os.getenv("BASE_URL", "https://api.wapifood.com")
-FROM_EMAIL = os.getenv("FROM_EMAIL", "no-reply@wapifood.com")  # Usar dominio verificado
+FROM_EMAIL = os.getenv("FROM_EMAIL", "soporte@wapifood.com")  # Usar dominio verificado
 
 
 
@@ -327,11 +339,21 @@ def obtener_codigo_confirmacion_por_id(user_id: int, db: Session) -> Optional[st
 #PARTE DE RESETEO DE CONTRASEÑA
 #-------------------------------------------
 #-------------------------------------------
+def create_reset_token(data: dict, expires_delta: timedelta = None) -> str:
+    """
+    Crea un token JWT específico para restablecimiento de contraseña.
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)  # Por defecto 15 minutos
+    to_encode.update({"exp": expire, "type": "reset"})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
 
 def request_password_reset(request: PasswordResetRequest, db: Session):
-    """
-    Procesa una solicitud de restablecimiento de contraseña enviando un enlace por correo.
-    """
     user = db.query(User).filter(User.email == request.email).first()
     if not user:
         raise HTTPException(
@@ -339,11 +361,9 @@ def request_password_reset(request: PasswordResetRequest, db: Session):
             detail="No se encontró un usuario con ese correo"
         )
     
-    # Generar token de restablecimiento
     token = create_access_token(data={"sub": user.email}, token_type="reset")
-    reset_link = f"{BASE_URL}/user/password-reset/confirm?token={token}"
+    reset_link = f"https://wapifood.com/resetpass?token={token}"
     
-    # Enviar correo con Resend
     try:
         headers = {
             "Authorization": f"Bearer {resend.api_key}",
@@ -399,12 +419,14 @@ def request_password_reset(request: PasswordResetRequest, db: Session):
             detail=f"Error enviando correo: {str(e)}"
         )
     
-    return PasswordResetResponse(message="Correo de restablecimiento enviado")
-
+    return EmailVerificationResponse(
+        token=token,
+        user_uuid=str(user.uuid),
+        message="Correo de restablecimiento enviado"
+    )
 
 #-------------------------------------------
 #-------------------------------------------
-
 
 def confirm_password_reset(confirm: PasswordResetConfirm, db: Session):
     """

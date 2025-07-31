@@ -390,8 +390,12 @@ class VentasPorAñoSchema(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/ventas_por_año", response_model=List[VentasPorAñoSchema], status_code=status.HTTP_200_OK,
-            description="Obtiene las ventas totales agrupadas por año entre la fecha de inicio y la fecha de fin especificadas")
+@router.get(
+    "/ventas_por_año",
+    response_model=List[VentasPorAñoSchema],
+    status_code=status.HTTP_200_OK,
+    description="Obtiene las ventas totales agrupadas por día entre la fecha de inicio y la fecha de fin especificadas"
+)
 async def ventas_por_año(
     fecha_inicio: str,  # Formato: YYYY-MM-DD
     fecha_fin: str,     # Formato: YYYY-MM-DD
@@ -399,46 +403,73 @@ async def ventas_por_año(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Devuelve las ventas totales agrupadas por año en el rango de fechas especificado.
+    Devuelve las ventas totales agrupadas por día en el rango de fechas especificado.
     """
     try:
-        start = datetime.strptime(fecha_inicio, "%Y-%m-%d")
-        end = datetime.strptime(fecha_fin, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Use YYYY-MM-DD")
+        # Validar y parsear fechas
+        try:
+            start = datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            end = datetime.strptime(fecha_fin, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Formato de fecha inválido. Use YYYY-MM-DD"
+            )
 
-    if start >= end:
-        raise HTTPException(status_code=400, detail="fecha_inicio debe ser anterior a fecha_fin")
+        # Validar que fecha_inicio sea anterior o igual a fecha_fin
+        if start > end:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="fecha_inicio debe ser anterior o igual a fecha_fin"
+            )
 
-    # Consulta para obtener las ventas agrupadas por año
-    sales = (
-        db.query(
-            func.extract('year', Orders.date_time).label('year'),
-            func.sum(Orders.total).label('total_sales')
+        # Consulta para obtener ventas agrupadas por día (compatible con MySQL)
+        sales = (
+            db.query(
+                func.date(Orders.date_time).label('sale_date'),
+                func.coalesce(func.sum(Orders.total), 0).label('total_sales')
+            )
+            .filter(
+                Orders.user_id == current_user.id_users,
+                Orders.date_time >= start,
+                Orders.date_time <= end
+            )
+            .group_by(func.date(Orders.date_time))
+            .order_by(func.date(Orders.date_time).asc())
+            .all()
         )
-        .filter(
-            Orders.user_id == current_user.id_users,
-            Orders.date_time >= start,
-            Orders.date_time <= end
+
+        # Verificar si hay resultados
+        if not sales:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontraron ventas en el rango de fechas especificado"
+            )
+
+        # Construir respuesta en el formato esperado
+        ventas_dicts = [
+            {
+                "date": sale_date.strftime("%Y-%m-%dT00:00:00"),  # Formato YYYY-MM-DDThh:mm:ss
+                "value": round(float(total_sales), 2)  # Redondear a 2 decimales
+            }
+            for sale_date, total_sales in sales
+        ]
+
+        # Validar cada elemento contra el esquema
+        try:
+            return [VentasPorAñoSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error al validar los datos de ventas: {str(e)}"
+            )
+
+    except Exception as e:
+        # Manejo genérico de errores
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error interno del servidor: {str(e)}"
         )
-        .group_by(func.extract('year', Orders.date_time))
-        .order_by(func.extract('year', Orders.date_time))
-        .all()
-    )
-
-    if not sales:
-        raise HTTPException(status_code=404, detail="No se encontraron ventas en el rango especificado")
-
-    # Construct response matching VentasPorAñoSchema
-    ventas_dicts = [
-        {
-            "date": f"{int(year)}-01-01T00:00:00",
-            "value": float(total_sales)
-        }
-        for year, total_sales in sales
-    ]
-
-    return [VentasPorAñoSchema.model_validate(venta_dict) for venta_dict in ventas_dicts]
 
 #------------------------------------------------------------------
 #------------------------------------------------------------------

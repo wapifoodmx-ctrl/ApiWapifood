@@ -20,7 +20,7 @@ SECRET_KEY = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
 # """
 ALGORITHM = "HS256"
 
-RESET_TOKEN_EXPIRE_MINUTES = None # Tiempo de expiración del token de restablecimiento en minutos
+RESET_TOKEN_EXPIRE_MINUTES = 36500 # Tiempo de expiración del token de restablecimiento en minutos
 
 # """
 # Tiempo de expiración del token en minutos.
@@ -102,28 +102,25 @@ def create_access_token(data: dict, token_type: str = "access", expires_minutes:
     Parámetros:
     - data (dict): Información a codificar en el token.
     - token_type (str): Tipo de token ('access' o 'reset').
-    - expires_minutes (int): Minutos hasta la expiración (opcional, usa valor por defecto según tipo).
+    - expires_minutes (int): Minutos hasta la expiración (opcional, usa valor por defecto según tipo. None para no expirar).
     
     Retorna:
     - str: Token JWT generado.
     """
-    # to_encode = data.copy()
-    # expire_minutes = expires_minutes or (RESET_TOKEN_EXPIRE_MINUTES if token_type == "reset" else 30)
-    # expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
-    # to_encode.update({"exp": expire, "token_type": token_type})
-    # encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    # return encoded_jwt
-     
     to_encode = data.copy()
-    expire_minutes = expires_minutes or (RESET_TOKEN_EXPIRE_MINUTES if token_type == "reset" else 30)
     
-    if expire_minutes is not None:
+    # Solo añadir fecha de expiración si expires_minutes no es None
+    if expires_minutes is not None:
+        expire_minutes = expires_minutes or (RESET_TOKEN_EXPIRE_MINUTES if token_type == "reset" else 30)
         expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
         to_encode.update({"exp": expire})
     
     to_encode.update({"token_type": token_type})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+
 
 
 def verify_token(token: str, token_type: str = "access"):
