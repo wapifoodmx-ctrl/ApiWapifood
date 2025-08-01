@@ -200,7 +200,8 @@ class Tables(Base):
     state = Column(SQLAlchemyEnum(TablesEnum), nullable=False)
     # Clave foránea a 'User'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False) 
-    subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
+    #subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
+    subscription_amount = Column(Integer, nullable=False)
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")

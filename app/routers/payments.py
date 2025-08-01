@@ -13,6 +13,9 @@ from app.repository.auth import get_current_user
 from app.schemas import SubscriptionRequest
 from typing import List
 from app.enums import TablesEnum
+from app.db.models import Tables as TablesModel, TableDetails, Payments
+from app.enums import TablesEnum, SubscriptionAmount
+
 
 load_dotenv()
 stripe.api_key = os.getenv("STRIPE_API_KEY")
@@ -247,8 +250,8 @@ for plan, price_id in PLAN_PRICES.items():
 #             ],
 #             mode="subscription",
 #             customer=customer.id,
-#             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-#             cancel_url="https://comandapp.h-dev.xyz/error",
+#             success_url="https://wapifood.com/success/?session_id={CHECKOUT_SESSION_ID}",
+#             cancel_url="https://wapifood.com/error",
 #             metadata={"user_id": str(current_user.id_users)},
 #         )
 
@@ -258,6 +261,17 @@ for plan, price_id in PLAN_PRICES.items():
 #         print(f"Suscripción: {checkout_session.subscription}")
 #         print(f"URL: {checkout_session.url}")
 
+#         # Asegurarse de usar el valor del enum
+#         plan_value = subscription_request.plan.value
+#         print(f"Valor del plan a insertar: {plan_value}")
+
+#          # Calcular la fecha de caducidad según el plan
+#         current_date = datetime.utcnow()
+#         if subscription_request.plan in [PlanType.BASICO_IMPRESORA, PlanType.RESTAURANTE_IMPRESORA, PlanType.PLUS_RESTAURANTE_IMPRESORA]:
+#             subscription_end_date = current_date + timedelta(days=365)  # 1 año para planes con impresora
+#         else:
+#             subscription_end_date = current_date + timedelta(days=30)  # 1 mes para planes mensuales
+
 #         payment = Payments(
 #             payment_method="pasarela",
 #             amount=0,  # Esto se actualizará con el webhook de Stripe
@@ -265,10 +279,11 @@ for plan, price_id in PLAN_PRICES.items():
 #             user_id=current_user.id_users,
 #             stripe_customer_id=checkout_session.customer,
 #             subscription_id=checkout_session.subscription,
-#             plan=subscription_request.plan.value,
+#             plan=plan_value,  # Usar el valor del enum explícitamente
 #             status=PaymentStatus.PENDING,
 #             checkout_session_id=checkout_session.id,
 #             email=current_user.email,
+#             subscription_end_date=subscription_end_date  # Guardar la fecha de caducidad
 #         )
 #         print(f"Registro a guardar: {payment.__dict__}")
 #         db.add(payment)
@@ -337,11 +352,7 @@ async def create_checkout_session(
         if not price_id:
             raise HTTPException(status_code=400, detail="Plan no válido")
 
-        # Verificar si ya existen detalles o mesas ANTES de crear el pago
-        existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
-        existing_tables = db.query(Tables).filter(Tables.user_id == current_user.id_users).all()
-        
-        # Crear un cliente de Stripe si no existe
+        # Crear cliente Stripe
         customer = stripe.Customer.create(email=current_user.email)
         checkout_session = stripe.checkout.Session.create(
             line_items=[
@@ -354,80 +365,43 @@ async def create_checkout_session(
             metadata={"user_id": str(current_user.id_users)},
         )
 
-        # Log antes de guardar el registro
-        print(f"Sesión de Checkout creada: ID={checkout_session.id}")
-        print(f"Cliente: {checkout_session.customer}")
-        print(f"Suscripción: {checkout_session.subscription}")
-        print(f"URL: {checkout_session.url}")
-
-        # Asegurarse de usar el valor del enum
-        plan_value = subscription_request.plan.value
-        print(f"Valor del plan a insertar: {plan_value}")
-
-         # Calcular la fecha de caducidad según el plan
+        # Fecha de expiración del plan
         current_date = datetime.utcnow()
-        if subscription_request.plan in [PlanType.BASICO_IMPRESORA, PlanType.RESTAURANTE_IMPRESORA, PlanType.PLUS_RESTAURANTE_IMPRESORA]:
-            subscription_end_date = current_date + timedelta(days=365)  # 1 año para planes con impresora
+        if subscription_request.plan in [
+            PlanType.BASICO_IMPRESORA,
+            PlanType.RESTAURANTE_IMPRESORA,
+            PlanType.PLUS_RESTAURANTE_IMPRESORA
+        ]:
+            subscription_end_date = current_date + timedelta(days=365)
         else:
-            subscription_end_date = current_date + timedelta(days=30)  # 1 mes para planes mensuales
+            subscription_end_date = current_date + timedelta(days=30)
 
+        # Registro de pago inicial
+        plan_value = subscription_request.plan.value
         payment = Payments(
             payment_method="pasarela",
-            amount=0,  # Esto se actualizará con el webhook de Stripe
+            amount=0,  # Se actualizará en el webhook
             date=datetime.utcnow(),
             user_id=current_user.id_users,
             stripe_customer_id=checkout_session.customer,
             subscription_id=checkout_session.subscription,
-            plan=plan_value,  # Usar el valor del enum explícitamente
+            plan=plan_value,
             status=PaymentStatus.PENDING,
             checkout_session_id=checkout_session.id,
             email=current_user.email,
-            subscription_end_date=subscription_end_date  # Guardar la fecha de caducidad
+            subscription_end_date=subscription_end_date
         )
-        print(f"Registro a guardar: {payment.__dict__}")
         db.add(payment)
-        
+
         try:
             db.commit()
             db.refresh(payment)
-            print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
-
-            # Solo crear mesas si NO existen previamente
-            if not existing_details and not existing_tables:
-                # Validar y crear mesas o detalles de mesas según el plan
-                plan_mesas = {
-                    PlanType.BASICO.value: 1,
-                    PlanType.PROFESIONAL.value: 16,
-                    PlanType.EMPRESARIAL.value: 26,
-                    PlanType.BASICO_IMPRESORA.value: 1,
-                    PlanType.RESTAURANTE_IMPRESORA.value: 16,
-                    PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
-                }
-                mesas = plan_mesas.get(subscription_request.plan.value, 0)
-                if mesas == 0:
-                    raise HTTPException(status_code=400, detail="Plan no reconocido")
-
-                # Crear detalles de mesas
-                table_details = []
-                for i in range(1, mesas + 1):
-                    detail = TableDetails(
-                        user_id=current_user.id_users,
-                        table_number=i,
-                        estado=TablesEnum.Libre,
-                        cantidad_ventas_por_mesa=0.0
-                    )
-                    table_details.append(detail)
-                db.add_all(table_details)
-                db.commit()
-
-                print(f"Se han creado {mesas} detalles de mesas para el usuario")
-            else:
-                print(f"Las mesas ya existen para el usuario {current_user.id_users}, omitiendo creación")
+            print(f"Pago guardado correctamente con ID {payment.id_payments}")
 
         except Exception as e:
             db.rollback()
-            print(f"Error al procesar pago y mesas: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error al procesar pago y mesas: {str(e)}")
+            print(f"Error al guardar pago: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Error al guardar pago: {str(e)}")
 
         return JSONResponse(
             status_code=200,
@@ -438,6 +412,110 @@ async def create_checkout_session(
         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+
+#-----------------------------------------------------------------
+#-----------------------------------------------------------------
+#-------------FUNCION PARA SINCRONIZAR MESAS
+#-----------------------------------------------------------------
+
+def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: float):
+    """
+    Sincroniza las mesas (Tables y TableDetails) con el plan de suscripción activo.
+    Elimina mesas sobrantes y crea nuevas si es necesario.
+    """
+    plan_mesas = {
+        PlanType.BASICO.value: 1,
+        PlanType.PROFESIONAL.value: 16,
+        PlanType.EMPRESARIAL.value: 26,
+        PlanType.BASICO_IMPRESORA.value: 1,
+        PlanType.RESTAURANTE_IMPRESORA.value: 16,
+        PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
+    }
+    mesas_permitidas = plan_mesas.get(plan, 0)
+    if mesas_permitidas == 0:
+        raise HTTPException(status_code=400, detail="Plan no reconocido")
+
+    # Mapear el monto al valor correcto del enum SubscriptionAmount
+    amount_mapping = {
+        100.0: SubscriptionAmount.PLAN_100,
+        200.0: SubscriptionAmount.PLAN_200,
+        300.0: SubscriptionAmount.PLAN_300,
+        1960.0: SubscriptionAmount.BASICO_IMPRESORA,
+        2920.0: SubscriptionAmount.RESTAURANTE_IMPRESORA,
+        3880.0: SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA
+    }
+    try:
+        subscription_amount_enum = amount_mapping.get(float(amount))
+        if not subscription_amount_enum:
+            raise ValueError(f"Monto {amount} no reconocido en amount_mapping")
+        subscription_amount = subscription_amount_enum.value  # Obtener el valor numérico del enum
+        print(f"Subscription amount mapped to: {subscription_amount}")  # Depuración
+    except (ValueError, TypeError) as e:
+        print(f"Error al mapear monto a SubscriptionAmount: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Monto {amount} no válido para SubscriptionAmount")
+
+    try:
+        # Mesas actuales en TableDetails
+        mesas_actuales_details = db.query(TableDetails).filter(TableDetails.user_id == user_id).order_by(TableDetails.table_number).all()
+        total_actuales_details = len(mesas_actuales_details)
+
+        # Mesas actuales en Tables
+        mesas_actuales_tables = db.query(TablesModel).filter(TablesModel.user_id == user_id).order_by(TablesModel.number).all()
+        total_actuales_tables = len(mesas_actuales_tables)
+
+        # Eliminar mesas sobrantes en TableDetails
+        if total_actuales_details > mesas_permitidas:
+            mesas_a_eliminar = mesas_actuales_details[mesas_permitidas:]
+            for mesa in mesas_a_eliminar:
+                db.delete(mesa)
+            print(f"Se eliminaron {len(mesas_a_eliminar)} mesas sobrantes en TableDetails.")
+
+        # Eliminar mesas sobrantes en Tables
+        if total_actuales_tables > mesas_permitidas:
+            mesas_a_eliminar = mesas_actuales_tables[mesas_permitidas:]
+            for mesa in mesas_a_eliminar:
+                db.delete(mesa)
+            print(f"Se eliminaron {len(mesas_a_eliminar)} mesas sobrantes en Tables.")
+
+        # Crear mesas faltantes en TableDetails
+        if total_actuales_details < mesas_permitidas:
+            nuevas_mesas = []
+            for i in range(total_actuales_details + 1, mesas_permitidas + 1):
+                nuevas_mesas.append(
+                    TableDetails(
+                        user_id=user_id,
+                        table_number=i,
+                        estado=TablesEnum.Libre,
+                        cantidad_ventas_por_mesa=0.0
+                    )
+                )
+            db.add_all(nuevas_mesas)
+            print(f"Se agregaron {len(nuevas_mesas)} nuevas mesas en TableDetails.")
+
+        # Crear mesas faltantes en Tables
+        if total_actuales_tables < mesas_permitidas:
+            nuevas_mesas = []
+            for i in range(total_actuales_tables + 1, mesas_permitidas + 1):
+                nuevas_mesas.append(
+                    TablesModel(
+                        number=i,
+                        capacity=4,
+                        state=TablesEnum.Libre,
+                        user_id=user_id,
+                        subscription_amount=subscription_amount  # Usar el valor numérico
+                    )
+                )
+            db.add_all(nuevas_mesas)
+            print(f"Se agregaron {len(nuevas_mesas)} nuevas mesas en Tables.")
+
+        db.commit()
+        print(f"Sincronización completada: {mesas_permitidas} mesas para el usuario {user_id}")
+        return {"message": f"Se han sincronizado {mesas_permitidas} mesas para el usuario", "mesas": mesas_permitidas}
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error al sincronizar mesas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al sincronizar mesas: {str(e)}")
 
 #-----------------------------------------------------------------
 #-----------------------------------------------------------------
@@ -473,6 +551,214 @@ async def create_portal_session(
 
 
 
+# @router.post("/webhook", status_code=status.HTTP_200_OK)
+# async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+#     payload = await request.body()
+#     sig_header = request.headers.get("stripe-signature")
+
+#     try:
+#         event = stripe.Webhook.construct_event(payload, sig_header, stripe_webhook_secret)
+#     except ValueError as e:
+#         raise HTTPException(status_code=400, detail="Carga inválida")
+#     except stripe.error.SignatureVerificationError as e:
+#         raise HTTPException(status_code=400, detail="Firma inválida")
+
+#     try:
+#         if event["type"] == "checkout.session.completed":
+#             checkout_session = event["data"]["object"]
+#             subscription_id = checkout_session.get("subscription")
+#             print(f"Procesando checkout.session.completed - Session ID: {checkout_session.id}, Subscription ID: {subscription_id}")
+
+#             if not subscription_id:
+#                 print("No subscription_id in event")
+#                 return {"status": "ignored", "message": "No subscription_id in event"}
+
+#             payment = db.query(Payments).filter(Payments.checkout_session_id == checkout_session.id).first()
+#             if not payment:
+#                 print(f"Pago no encontrado para checkout_session_id: {checkout_session.id}")
+#                 return {"status": "ignored", "message": "Payment not found"}
+
+#             user = db.query(User).filter(User.id_users == payment.user_id).first()
+#             if not user:
+#                 print(f"Usuario no encontrado para user_id: {payment.user_id}")
+#                 return {"status": "ignored", "message": "User not found"}
+
+#             payment.subscription_id = subscription_id or payment.subscription_id
+#             payment.stripe_customer_id = checkout_session.customer or payment.stripe_customer_id
+
+#             try:
+#                 subscription = stripe.Subscription.retrieve(subscription_id)
+#                 print(f"Subscription retrieved: {subscription}")
+#             except stripe.error.InvalidRequestError as e:
+#                 print(f"Error al recuperar la suscripción: {str(e)}")
+#                 return {"status": "error", "message": f"Error al recuperar la suscripción: {str(e)}"}
+
+#             try:
+#                 if subscription.plan and subscription.plan.amount:
+#                     amount = subscription.plan.amount / 100
+#                 else:
+#                     price_id = subscription.plan.id if subscription.plan else None
+#                     if price_id:
+#                         price = stripe.Price.retrieve(price_id)
+#                         amount = price.unit_amount / 100
+#                     else:
+#                         amount = 0
+#                 payment.amount = amount
+#                 print(f"Amount set to: {amount}")
+#             except stripe.error.InvalidRequestError as e:
+#                 print(f"Error al recuperar el precio: {str(e)}")
+#                 amount = 0
+#                 payment.amount = amount
+
+#             # Manejo aún más robusto de current_period_end
+#             subscription_end_date = None
+#             try:
+#                 # Verificar primero si el atributo existe y es accesible
+#                 current_period_end = getattr(subscription, 'current_period_end', None)
+#                 print(f"Valor de current_period_end: {current_period_end}")
+#                 if current_period_end is not None and isinstance(current_period_end, (int, float)) and current_period_end > 0:
+#                     subscription_end_date = datetime.utcfromtimestamp(current_period_end)
+#                     print(f"Subscription end date from current_period_end: {subscription_end_date}")
+#                 else:
+#                     print(f"current_period_end no válido o ausente: {current_period_end}")
+#                     raise ValueError("current_period_end no disponible o inválido")
+#             except (ValueError, TypeError, OSError) as e:
+#                 print(f"Error al procesar current_period_end: {str(e)}")
+#                 try:
+#                     # Verificar current_period_start de manera similar
+#                     current_period_start = getattr(subscription, 'current_period_start', None)
+#                     plan_interval = subscription.plan.interval if subscription.plan and hasattr(subscription.plan, 'interval') else None
+#                     print(f"current_period_start: {current_period_start}, plan.interval: {plan_interval}")
+#                     if current_period_start is not None and isinstance(current_period_start, (int, float)) and current_period_start > 0 and plan_interval:
+#                         start_date = datetime.utcfromtimestamp(current_period_start)
+#                         if plan_interval == "month":
+#                             subscription_end_date = start_date + timedelta(days=30)
+#                         elif plan_interval == "year":
+#                             subscription_end_date = start_date + timedelta(days=365)
+#                         else:
+#                             subscription_end_date = start_date + timedelta(days=30)
+#                         print(f"Subscription end date calculated from start: {subscription_end_date}")
+#                     else:
+#                         print(f"current_period_start o plan.interval no disponibles: start={current_period_start}, interval={plan_interval}")
+#                         subscription_end_date = datetime.utcnow() + timedelta(days=30)
+#                         print(f"Subscription end date calculated manually: {subscription_end_date}")
+#                 except (ValueError, TypeError, OSError) as e:
+#                     print(f"Error al calcular la fecha de finalización: {str(e)}")
+#                     subscription_end_date = datetime.utcnow() + timedelta(days=30)
+#                     print(f"Usando fecha por defecto: {subscription_end_date}")
+
+#             payment.subscription_end_date = subscription_end_date
+#             payment.status = PaymentStatus.COMPLETED
+#             payment.email = user.email
+#             try:
+#                 db.commit()
+#                 db.refresh(payment)
+#                 print(f"Pago actualizado en la base de datos: {payment.__dict__}")
+#             except Exception as e:
+#                 db.rollback()
+#                 print(f"Error al actualizar la base de datos: {str(e)}")
+#                 raise HTTPException(status_code=500, detail=f"Error al actualizar la base de datos: {str(e)}")
+
+#         elif event["type"] == "customer.subscription.updated":
+#             subscription = event["data"]["object"]
+#             subscription_id = subscription.get("id")
+
+#             payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+#             if not payment:
+#                 return {"status": "ignored", "message": "Payment not found"}
+
+#             user = db.query(User).filter(User.id_users == payment.user_id).first()
+#             if not user:
+#                 return {"status": "ignored", "message": "User not found"}
+
+#             # Actualizar el monto si cambió el plan
+#             if subscription.plan and subscription.plan.amount:
+#                 amount = subscription.plan.amount / 100
+#                 payment.amount = amount
+#                 print(f"Updated amount to: {amount}")
+
+#             # Actualizar la fecha de finalización
+#             if subscription.current_period_end:
+#                 subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
+#                 payment.subscription_end_date = subscription_end_date
+#                 print(f"Updated subscription end date to: {subscription_end_date}")
+#             else:
+#                 if subscription.current_period_start and subscription.plan and subscription.plan.interval:
+#                     start_date = datetime.utcfromtimestamp(subscription.current_period_start)
+#                     if subscription.plan.interval == "month":
+#                         subscription_end_date = start_date + timedelta(days=30)
+#                     elif subscription.plan.interval == "year":
+#                         subscription_end_date = start_date + timedelta(days=365)
+#                     else:
+#                         subscription_end_date = start_date + timedelta(days=30)
+#                     payment.subscription_end_date = subscription_end_date
+#                     print(f"Calculated subscription end date: {subscription_end_date}")
+#                 else:
+#                     payment.subscription_end_date = datetime.utcnow() + timedelta(days=30)
+#                     print(f"Manually set subscription end date: {payment.subscription_end_date}")
+
+#             # Actualizar el estado si es necesario (por ejemplo, si se reactiva)
+#             if subscription.status == "active" or subscription.status == "trialing":
+#                 payment.status = PaymentStatus.COMPLETED
+#             elif subscription.status == "canceled":
+#                 payment.status = PaymentStatus.FAILED
+#             payment.email = user.email
+#             db.commit()
+#             db.refresh(payment)
+#             print(f"Payment updated in DB: {payment.__dict__}")
+
+#         elif event["type"] == "customer.subscription.deleted":
+#             subscription = event["data"]["object"]
+#             subscription_id = subscription.get("id")
+
+#             payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+#             if not payment:
+#                 return {"status": "ignored", "message": "Payment not found"}
+
+#             user = db.query(User).filter(User.id_users == payment.user_id).first()
+#             if user:
+#                 payment.email = user.email
+
+#             payment.status = PaymentStatus.FAILED
+#             payment.subscription_end_date = None  # Limpia la fecha de finalización
+#             db.commit()
+#             db.refresh(payment)
+#             print(f"Payment canceled in DB: {payment.__dict__}")
+
+#         elif event["type"] == "payment_intent.succeeded":
+#             payment_intent = event["data"]["object"]
+#             subscription_id = payment_intent.get("metadata", {}).get("subscription_id")
+#             if not subscription_id:
+#                 if payment_intent.get("charges", {}).get("data"):
+#                     charge = payment_intent["charges"]["data"][0]
+#                     invoice_id = charge.get("invoice")
+#                     if invoice_id:
+#                         invoice = stripe.Invoice.retrieve(invoice_id)
+#                         subscription_id = invoice.get("subscription")
+
+#             if not subscription_id:
+#                 return {"status": "ignored", "message": "No subscription_id in payment_intent"}
+
+#             payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+#             if not payment:
+#                 return {"status": "ignored", "message": "Payment not found"}
+
+#             user = db.query(User).filter(User.id_users == payment.user_id).first()
+#             if user:
+#                 payment.email = user.email
+
+#             payment.stripe_payment_intent_id = payment_intent["id"]
+#             db.commit()
+#             db.refresh(payment)
+
+#         else:
+#             return {"status": "ignored", "message": f"Event type {event['type']} not handled"}
+
+#         return {"status": "success"}
+
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
+
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -481,8 +767,10 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
     try:
         event = stripe.Webhook.construct_event(payload, sig_header, stripe_webhook_secret)
     except ValueError as e:
+        print(f"Error: Carga inválida - {str(e)}")
         raise HTTPException(status_code=400, detail="Carga inválida")
     except stripe.error.SignatureVerificationError as e:
+        print(f"Error: Firma inválida - {str(e)}")
         raise HTTPException(status_code=400, detail="Firma inválida")
 
     try:
@@ -515,126 +803,154 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 print(f"Error al recuperar la suscripción: {str(e)}")
                 return {"status": "error", "message": f"Error al recuperar la suscripción: {str(e)}"}
 
+            # Calcular monto
+            amount = 0
             try:
-                if subscription.plan and subscription.plan.amount:
+                if subscription.plan and subscription.plan.amount is not None:
                     amount = subscription.plan.amount / 100
                 else:
                     price_id = subscription.plan.id if subscription.plan else None
                     if price_id:
                         price = stripe.Price.retrieve(price_id)
                         amount = price.unit_amount / 100
-                    else:
-                        amount = 0
                 payment.amount = amount
                 print(f"Amount set to: {amount}")
-            except stripe.error.InvalidRequestError as e:
-                print(f"Error al recuperar el precio: {str(e)}")
-                amount = 0
+            except Exception as e:
+                print(f"Error al obtener el monto: {str(e)}")
                 payment.amount = amount
 
-            # Manejo aún más robusto de current_period_end
+            # Calcular subscription_end_date
             subscription_end_date = None
             try:
-                # Verificar primero si el atributo existe y es accesible
-                current_period_end = getattr(subscription, 'current_period_end', None)
-                print(f"Valor de current_period_end: {current_period_end}")
+                # Acceder a current_period_end desde el objeto subscription
+                current_period_end = getattr(subscription, "current_period_end", None)
+                print(f"current_period_end: {current_period_end}")
                 if current_period_end is not None and isinstance(current_period_end, (int, float)) and current_period_end > 0:
                     subscription_end_date = datetime.utcfromtimestamp(current_period_end)
-                    print(f"Subscription end date from current_period_end: {subscription_end_date}")
+                    print(f"subscription_end_date from current_period_end: {subscription_end_date}")
                 else:
-                    print(f"current_period_end no válido o ausente: {current_period_end}")
-                    raise ValueError("current_period_end no disponible o inválido")
-            except (ValueError, TypeError, OSError) as e:
+                    raise ValueError("current_period_end no válido o ausente")
+            except (ValueError, TypeError, AttributeError, OSError) as e:
                 print(f"Error al procesar current_period_end: {str(e)}")
                 try:
-                    # Verificar current_period_start de manera similar
-                    current_period_start = getattr(subscription, 'current_period_start', None)
-                    plan_interval = subscription.plan.interval if subscription.plan and hasattr(subscription.plan, 'interval') else None
+                    current_period_start = getattr(subscription, "current_period_start", None)
+                    plan_interval = getattr(subscription.plan, "interval", None) if subscription.plan else None
                     print(f"current_period_start: {current_period_start}, plan.interval: {plan_interval}")
                     if current_period_start is not None and isinstance(current_period_start, (int, float)) and current_period_start > 0 and plan_interval:
                         start_date = datetime.utcfromtimestamp(current_period_start)
-                        if plan_interval == "month":
-                            subscription_end_date = start_date + timedelta(days=30)
-                        elif plan_interval == "year":
-                            subscription_end_date = start_date + timedelta(days=365)
-                        else:
-                            subscription_end_date = start_date + timedelta(days=30)
-                        print(f"Subscription end date calculated from start: {subscription_end_date}")
+                        days_to_add = 365 if plan_interval == "year" or amount > 300 else 30
+                        subscription_end_date = start_date + timedelta(days=days_to_add)
+                        print(f"subscription_end_date calculated from start: {subscription_end_date}")
                     else:
-                        print(f"current_period_start o plan.interval no disponibles: start={current_period_start}, interval={plan_interval}")
-                        subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                        print(f"Subscription end date calculated manually: {subscription_end_date}")
-                except (ValueError, TypeError, OSError) as e:
-                    print(f"Error al calcular la fecha de finalización: {str(e)}")
-                    subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                    print(f"Usando fecha por defecto: {subscription_end_date}")
+                        raise ValueError("current_period_start o plan.interval no válido")
+                except (ValueError, TypeError, AttributeError, OSError) as e:
+                    print(f"Error al calcular subscription_end_date: {str(e)}")
+                    days_to_add = 365 if amount > 300 else 30
+                    subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+                    print(f"subscription_end_date set to default: {subscription_end_date}")
 
             payment.subscription_end_date = subscription_end_date
             payment.status = PaymentStatus.COMPLETED
             payment.email = user.email
-            try:
-                db.commit()
-                db.refresh(payment)
-                print(f"Pago actualizado en la base de datos: {payment.__dict__}")
-            except Exception as e:
-                db.rollback()
-                print(f"Error al actualizar la base de datos: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error al actualizar la base de datos: {str(e)}")
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.__dict__}")
+
+            # Sincronizar mesas
+            sync_tables_with_subscription(db, payment.user_id, payment.plan, payment.amount)
 
         elif event["type"] == "customer.subscription.updated":
             subscription = event["data"]["object"]
             subscription_id = subscription.get("id")
+            print(f"Procesando customer.subscription.updated - Subscription ID: {subscription_id}")
 
             payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
             if not payment:
+                print(f"Pago no encontrado para subscription_id: {subscription_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if not user:
+                print(f"Usuario no encontrado para user_id: {payment.user_id}")
                 return {"status": "ignored", "message": "User not found"}
 
-            # Actualizar el monto si cambió el plan
-            if subscription.plan and subscription.plan.amount:
-                amount = subscription.plan.amount / 100
+            # Actualizar monto y plan
+            amount = 0
+            try:
+                if subscription.plan and subscription.plan.amount is not None:
+                    amount = subscription.plan.amount / 100
+                else:
+                    price_id = subscription.plan.id if subscription.plan else None
+                    if price_id:
+                        price = stripe.Price.retrieve(price_id)
+                        amount = price.unit_amount / 100
                 payment.amount = amount
                 print(f"Updated amount to: {amount}")
+            except Exception as e:
+                print(f"Error al obtener el monto: {str(e)}")
+                payment.amount = amount
 
-            # Actualizar la fecha de finalización
-            if subscription.current_period_end:
-                subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
-                payment.subscription_end_date = subscription_end_date
-                print(f"Updated subscription end date to: {subscription_end_date}")
+            # Actualizar plan
+            price_id = subscription.plan.id if subscription.plan else None
+            plan = None
+            for plan_type, pid in PLAN_PRICES.items():
+                if pid == price_id:
+                    plan = plan_type
+                    break
+            if plan:
+                payment.plan = plan
+                print(f"Updated plan to: {plan}")
             else:
-                if subscription.current_period_start and subscription.plan and subscription.plan.interval:
-                    start_date = datetime.utcfromtimestamp(subscription.current_period_start)
-                    if subscription.plan.interval == "month":
-                        subscription_end_date = start_date + timedelta(days=30)
-                    elif subscription.plan.interval == "year":
-                        subscription_end_date = start_date + timedelta(days=365)
-                    else:
-                        subscription_end_date = start_date + timedelta(days=30)
-                    payment.subscription_end_date = subscription_end_date
-                    print(f"Calculated subscription end date: {subscription_end_date}")
-                else:
-                    payment.subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                    print(f"Manually set subscription end date: {payment.subscription_end_date}")
+                print(f"Price ID {price_id} no encontrado en PLAN_PRICES")
+                return {"status": "ignored", "message": "Plan not recognized"}
 
-            # Actualizar el estado si es necesario (por ejemplo, si se reactiva)
-            if subscription.status == "active" or subscription.status == "trialing":
-                payment.status = PaymentStatus.COMPLETED
-            elif subscription.status == "canceled":
-                payment.status = PaymentStatus.FAILED
+            # Actualizar subscription_end_date
+            subscription_end_date = None
+            try:
+                current_period_end = getattr(subscription, "current_period_end", None)
+                print(f"current_period_end: {current_period_end}")
+                if current_period_end is not None and isinstance(current_period_end, (int, float)) and current_period_end > 0:
+                    subscription_end_date = datetime.utcfromtimestamp(current_period_end)
+                    print(f"subscription_end_date from current_period_end: {subscription_end_date}")
+                else:
+                    raise ValueError("current_period_end no válido o ausente")
+            except (ValueError, TypeError, OSError) as e:
+                print(f"Error al procesar current_period_end: {str(e)}")
+                try:
+                    current_period_start = getattr(subscription, "current_period_start", None)
+                    plan_interval = getattr(subscription.plan, "interval", None) if subscription.plan else None
+                    print(f"current_period_start: {current_period_start}, plan.interval: {plan_interval}")
+                    if current_period_start is not None and isinstance(current_period_start, (int, float)) and current_period_start > 0 and plan_interval:
+                        start_date = datetime.utcfromtimestamp(current_period_start)
+                        days_to_add = 365 if plan_interval == "year" or amount > 300 else 30
+                        subscription_end_date = start_date + timedelta(days=days_to_add)
+                        print(f"subscription_end_date calculated from start: {subscription_end_date}")
+                    else:
+                        raise ValueError("current_period_start o plan.interval no válido")
+                except (ValueError, TypeError, OSError) as e:
+                    print(f"Error al calcular subscription_end_date: {str(e)}")
+                    days_to_add = 365 if amount > 300 else 30
+                    subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+                    print(f"subscription_end_date set to default: {subscription_end_date}")
+
+            payment.subscription_end_date = subscription_end_date
+            payment.status = PaymentStatus.COMPLETED if subscription.status in ["active", "trialing"] else PaymentStatus.FAILED
             payment.email = user.email
             db.commit()
             db.refresh(payment)
-            print(f"Payment updated in DB: {payment.__dict__}")
+            print(f"Pago actualizado: {payment.__dict__}")
+
+            # Sincronizar mesas
+            sync_tables_with_subscription(db, payment.user_id, payment.plan, payment.amount)
 
         elif event["type"] == "customer.subscription.deleted":
             subscription = event["data"]["object"]
             subscription_id = subscription.get("id")
+            print(f"Procesando customer.subscription.deleted - Subscription ID: {subscription_id}")
 
             payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
             if not payment:
+                print(f"Pago no encontrado para subscription_id: {subscription_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
@@ -642,46 +958,27 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 payment.email = user.email
 
             payment.status = PaymentStatus.FAILED
-            payment.subscription_end_date = None  # Limpia la fecha de finalización
+            payment.subscription_end_date = None
             db.commit()
             db.refresh(payment)
-            print(f"Payment canceled in DB: {payment.__dict__}")
+            print(f"Pago cancelado: {payment.__dict__}")
 
-        elif event["type"] == "payment_intent.succeeded":
-            payment_intent = event["data"]["object"]
-            subscription_id = payment_intent.get("metadata", {}).get("subscription_id")
-            if not subscription_id:
-                if payment_intent.get("charges", {}).get("data"):
-                    charge = payment_intent["charges"]["data"][0]
-                    invoice_id = charge.get("invoice")
-                    if invoice_id:
-                        invoice = stripe.Invoice.retrieve(invoice_id)
-                        subscription_id = invoice.get("subscription")
-
-            if not subscription_id:
-                return {"status": "ignored", "message": "No subscription_id in payment_intent"}
-
-            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
-            if not payment:
-                return {"status": "ignored", "message": "Payment not found"}
-
-            user = db.query(User).filter(User.id_users == payment.user_id).first()
-            if user:
-                payment.email = user.email
-
-            payment.stripe_payment_intent_id = payment_intent["id"]
+            # Eliminar todas las mesas
+            db.query(TablesModel).filter(TablesModel.user_id == payment.user_id).delete()
+            db.query(TableDetails).filter(TableDetails.user_id == payment.user_id).delete()
             db.commit()
-            db.refresh(payment)
+            print(f"Se eliminaron todas las mesas para el usuario {payment.user_id}")
 
         else:
+            print(f"Evento no manejado: {event['type']}")
             return {"status": "ignored", "message": f"Event type {event['type']} not handled"}
 
         return {"status": "success"}
 
     except Exception as e:
+        print(f"Error al procesar webhook: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
     
-
 #-----------------------------------------------------------------
 #-----------------------------------------------------------------
 

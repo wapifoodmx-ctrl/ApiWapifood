@@ -25,6 +25,8 @@ from resend.exceptions import InvalidApiKeyError, ResendError
 import requests
 from requests.exceptions import HTTPError
 import logging
+from jinja2 import Environment, FileSystemLoader
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +355,81 @@ def create_reset_token(data: dict, expires_delta: timedelta = None) -> str:
     return encoded_jwt
 
 
+# def request_password_reset(request: PasswordResetRequest, db: Session):
+#     user = db.query(User).filter(User.email == request.email).first()
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="No se encontró un usuario con ese correo"
+#         )
+    
+#     token = create_access_token(data={"sub": user.email}, token_type="reset")
+#     reset_link = f"https://wapifood.com/resetpass?token={token}"
+    
+#     try:
+#         headers = {
+#             "Authorization": f"Bearer {resend.api_key}",
+#             "Content-Type": "application/json"
+#         }
+#         payload = {
+#             "from": FROM_EMAIL,
+#             "to": user.email,
+#             "subject": "Restablecimiento de Contraseña - WapiFood",
+#             "html": f"""
+#                 <p>Hola {user.name},</p>
+#                 <p>Has solicitado restablecer tu contraseña para WapiFood. Haz clic en el siguiente enlace para continuar:</p>
+#                 <p><a href="{reset_link}">Restablecer Contraseña</a></p>
+#                 <p>Este enlace es válido por 15 minutos.</p>
+#                 <p>Si no solicitaste este cambio, por favor ignora este correo o contacta a soporte.</p>
+#                 <p>Saludos,<br>Equipo WapiFood</p>
+#             """,
+#             "headers": {
+#                 "List-Unsubscribe": f"<mailto:unsubscribe@wapifood.com>",
+#                 "X-Priority": "3"
+#             }
+#         }
+#         response = requests.post(
+#             "https://api.resend.com/emails",
+#             json=payload,
+#             headers=headers
+#         )
+#         response.raise_for_status()
+#         logger.info(f"Correo de restablecimiento enviado a {user.email}, respuesta de Resend: {response.json()}")
+#     except HTTPError as e:
+#         logger.error(f"Error HTTP al enviar correo: {str(e)}")
+#         logger.error(f"Respuesta de Resend: {e.response.text}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Error enviando correo: {e.response.text}"
+#         )
+#     except InvalidApiKeyError:
+#         logger.error("Clave API de Resend inválida")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Error enviando correo: Clave API de Resend inválida"
+#         )
+#     except ResendError as e:
+#         logger.error(f"Error de Resend: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Error enviando correo: {str(e)}"
+#         )
+#     except Exception as e:
+#         logger.error(f"Error desconocido: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"Error enviando correo: {str(e)}"
+#         )
+    
+#     return EmailVerificationResponse(
+#         token=token,
+#         user_uuid=str(user.uuid),
+#         message="Correo de restablecimiento enviado"
+#     )
+
+#-------------------------------------------
+#-------------------------------------------
+
 def request_password_reset(request: PasswordResetRequest, db: Session):
     user = db.query(User).filter(User.email == request.email).first()
     if not user:
@@ -363,6 +440,19 @@ def request_password_reset(request: PasswordResetRequest, db: Session):
     
     token = create_access_token(data={"sub": user.email}, token_type="reset")
     reset_link = f"https://wapifood.com/resetpass?token={token}"
+    print(f"Ruta de búsqueda de Jinja2: {Path(__file__).parent / 'templates'}")
+    
+    # Configurar Jinja2 para cargar la plantilla
+    env = Environment(loader=FileSystemLoader(Path(__file__).parent / "templates"))
+    template = env.get_template("passwordemailstyle.html")
+    
+    # Renderizar la plantilla con los datos
+    html_content = template.render(
+        user_name=user.name,
+        reset_link=reset_link,
+        support_email="soporte@wapifood.com",
+        logo_url="https://api.wapifood.com/static/uploads/WapiFoodLogo.png"  # Cambia por la URL de tu logo
+    )
     
     try:
         headers = {
@@ -373,14 +463,7 @@ def request_password_reset(request: PasswordResetRequest, db: Session):
             "from": FROM_EMAIL,
             "to": user.email,
             "subject": "Restablecimiento de Contraseña - WapiFood",
-            "html": f"""
-                <p>Hola {user.name},</p>
-                <p>Has solicitado restablecer tu contraseña para WapiFood. Haz clic en el siguiente enlace para continuar:</p>
-                <p><a href="{reset_link}">Restablecer Contraseña</a></p>
-                <p>Este enlace es válido por 15 minutos.</p>
-                <p>Si no solicitaste este cambio, por favor ignora este correo o contacta a soporte.</p>
-                <p>Saludos,<br>Equipo WapiFood</p>
-            """,
+            "html": html_content,
             "headers": {
                 "List-Unsubscribe": f"<mailto:unsubscribe@wapifood.com>",
                 "X-Priority": "3"
