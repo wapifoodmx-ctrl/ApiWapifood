@@ -1353,16 +1353,16 @@ async def dame_todas_las_ordenes_de_las_ultimas_24_horas(
 #------------------------------------------
 
 @router.get("/orders/ultima-semana", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
-description="Obtiene todas las órdenes de los ultimos 7 dias")
+            description="Obtiene todas las órdenes de los últimos 7 días")
 async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Obtiene todas las órdenes asociadas al usuario autenticado.
-    Ultimos 7 dias
+    Últimos 7 días
     """
-     # Calcular la fecha de hace 7 días
+    # Calcular la fecha de hace 7 días
     hace_7_dias = datetime.now() - timedelta(days=7)
     
     # Obtener las órdenes del usuario autenticado de los últimos 7 días
@@ -1384,12 +1384,12 @@ async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
         # Construir la lista de detalles de productos
         product_details = [
             OrderDetailItem(
-                id_orders_details=detail.id_orders_details,  # Agregar id_orders_details
+                id_orders_details=detail.id_orders_details,
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
-                order_detail_status=detail.order_detail_status  # Agregado para incluir el estado del detalle
+                order_detail_status=detail.order_detail_status
             )
             for detail in db_order.order_details
         ]
@@ -1401,17 +1401,13 @@ async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
             else "Sin nombre de restaurante"
         )
 
-        # Obtener el numero de mesa
-        mesa_number = (
-            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
-        
-        )
+        # Obtener el número de mesa, usar 0 si no está disponible
+        mesa_number = db_order.table.number if db_order.table and db_order.table.number else 0
 
         # Construir la respuesta
         response = OrderDetailsByUUIDResponse(
             id_orders=db_order.id_orders,
             mesa_number=mesa_number,
-            # mesa_id=db_order.mesa_id,
             restaurant_name=restaurant_name,
             order_uuid=db_order.order_uuid,
             date_time=db_order.date_time,
@@ -1420,41 +1416,40 @@ async def dame_todas_las_ordenes_de_los_ultimos_7_dias(
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
             metodo_pago=db_order.metodo_pago,
-            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
+            ticket_number=db_order.ticket_number
         )
         responses.append(response)
 
     return responses
 
-
 #------------------------------------------
 #------------------------------------------
 
 @router.get("/orders/ultimo-mes", response_model=list[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK,
-description="Obtiene todas las órdenes de los ultimos 30 dias")
+            description="Obtiene todas las órdenes de los últimos 30 días")
 async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Obtiene todas las órdenes asociadas al usuario autenticado.
-    Ultimos 30 dias
+    Últimos 30 días
     """
-     # Calcular la fecha de hace 7 días
+    # Calcular la fecha de hace 30 días
     hace_30_dias = datetime.now() - timedelta(days=30)
     
-    # Obtener las órdenes del usuario autenticado de los últimos 7 días
+    # Obtener las órdenes del usuario autenticado de los últimos 30 días
     db_orders = db.query(OrdersModel).filter(
         OrdersModel.user_id == current_user.id_users,
-        OrdersModel.date_time >= hace_30_dias  # Filtro por los últimos 7 días
+        OrdersModel.date_time >= hace_30_dias
     ).options(
         joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
         joinedload(OrdersModel.user).joinedload(User.user_info),
-        joinedload(OrdersModel.table)  # Agregar joinedload para la mesa
+        joinedload(OrdersModel.table)
     ).all()
 
     if not db_orders:
-        raise HTTPException(status_code=204, detail="No se encontraron órdenes de los últimos 7 días para este usuario")
+        raise HTTPException(status_code=204, detail="No se encontraron órdenes de los últimos 30 días para este usuario")
 
     # Construir la lista de respuestas
     responses = []
@@ -1462,12 +1457,12 @@ async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
         # Construir la lista de detalles de productos
         product_details = [
             OrderDetailItem(
-                id_orders_details=detail.id_orders_details,  # Agregar id_orders_details
+                id_orders_details=detail.id_orders_details,
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
-                order_detail_status=detail.order_detail_status  # Agregado para incluir el estado del detalle
+                order_detail_status=detail.order_detail_status
             )
             for detail in db_order.order_details
         ]
@@ -1479,17 +1474,13 @@ async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
             else "Sin nombre de restaurante"
         )
 
-        # Obtener el numero de mesa
-        mesa_number = (
-            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
-        
-        )
+        # Obtener el número de mesa, usar 0 si no está disponible
+        mesa_number = db_order.table.number if db_order.table and db_order.table.number else 0
 
         # Construir la respuesta
         response = OrderDetailsByUUIDResponse(
             id_orders=db_order.id_orders,
             mesa_number=mesa_number,
-            # mesa_id=db_order.mesa_id,
             restaurant_name=restaurant_name,
             order_uuid=db_order.order_uuid,
             date_time=db_order.date_time,
@@ -1498,12 +1489,11 @@ async def dame_todas_las_ordenes_de_los_ultimos_30_dias(
             products=product_details,
             total=float(db_order.total) if db_order.total is not None else 0.0,
             metodo_pago=db_order.metodo_pago,
-            ticket_number=db_order.ticket_number  # Agregado para incluir el número de ticket
+            ticket_number=db_order.ticket_number
         )
         responses.append(response)
 
     return responses
-
 
 #------------------------------------------
 #------------------------------------------
@@ -1583,7 +1573,7 @@ async def dame_todas_las_ordenes_entre_fechas_establecidas(
 
         # Obtener el numero de mesa
         mesa_number = (
-            db_order.table.number if db_order.table and db_order.table.number else "Sin número de mesa"
+            db_order.table.number if db_order.table and db_order.table.number else 0
         
         )
 
