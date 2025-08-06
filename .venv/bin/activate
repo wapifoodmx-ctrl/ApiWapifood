@@ -39,24 +39,10 @@ deactivate nondestructive
 if [ "${OSTYPE:-}" = "cygwin" ] || [ "${OSTYPE:-}" = "msys" ] ; then
     # transform D:\path\to\venv to /d/path/to/venv on MSYS
     # and to /cygdrive/d/path/to/venv on Cygwin
-<<<<<<< HEAD:.venv/Scripts/activate
-<<<<<<< HEAD:.venv/bin/activate
-    export VIRTUAL_ENV=$(cygpath /home/hugo/Escritorio/FastApi/.venv)
+    export VIRTUAL_ENV=$(cygpath /home/hugo/Escritorio/api_comanda_mercadopago/FastApi_mercadopago/.venv)
 else
     # use the path as-is
-    export VIRTUAL_ENV=/home/hugo/Escritorio/FastApi/.venv
-=======
-    export VIRTUAL_ENV=$(cygpath "C:\Users\PC\Desktop\FastApi_Comanda\.venv")
-else
-    # use the path as-is
-    export VIRTUAL_ENV="C:\Users\PC\Desktop\FastApi_Comanda\.venv"
->>>>>>> 827d76c73393351ff8f45e7133590bdf5f216b0d:.venv/Scripts/activate
-=======
-    export VIRTUAL_ENV=$(cygpath /home/soportec/Desktop/FastApi_Comanda/.venv)
-else
-    # use the path as-is
-    export VIRTUAL_ENV=/home/soportec/Desktop/FastApi_Comanda/.venv
->>>>>>> 9650695a41aeda04d243d384fdeb85c32620f000:.venv/bin/activate
+    export VIRTUAL_ENV=/home/hugo/Escritorio/api_comanda_mercadopago/FastApi_mercadopago/.venv
 fi
 
 _OLD_VIRTUAL_PATH="$PATH"

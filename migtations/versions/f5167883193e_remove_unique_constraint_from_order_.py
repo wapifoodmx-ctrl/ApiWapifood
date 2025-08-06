@@ -20,8 +20,8 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     # Eliminar la restricción única de la columna order_uuid en la tabla orders
-    with op.batch_alter_table('orders', schema=None) as batch_op:
-        batch_op.drop_index('order_uuid')  # Corrección: Usar el nombre real del índice
+    # with op.batch_alter_table('orders', schema=None) as batch_op:
+    #     batch_op.drop_index('order_uuid')  # Corrección: Usar el nombre real del índice
 
 
 def downgrade() -> None:

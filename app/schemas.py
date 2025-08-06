@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, computed_field
+from pydantic import BaseModel, field_validator, computed_field, EmailStr
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -259,7 +259,7 @@ class ImageResponse(BaseModel):
     @property
     def url(self):
         # Construye la URL completa (ajusta según tu configuración)
-        return f"https://comandapp-api.h-dev.xyz/static/uploads/{self.file_name}"
+        return f"https://api.wapifood.com/static/uploads/{self.file_name}"
         
         #return f"http://192.168.1.69/static/uploads/{self.file_name}"
 
@@ -335,6 +335,7 @@ class Login(BaseModel):
 
 class TokenData(BaseModel):
     name: Union[str, None] = None
+    username: str | None = None
 
 # Nuevos esquemas para imágenes
 class ImageCreate(BaseModel):
@@ -376,14 +377,14 @@ class ImageUserResponse(BaseModel):
     @computed_field
     @property
     def url(self) -> str:
-        base_url = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")  # Alinear con products.py
+        base_url = os.getenv("BASE_URL", "https://api.wapifood.com")  # Alinear con products.py
         return f"{base_url}/static/uploads/{self.file_name}"
 
     class Config:
         from_attributes = True
 
-        #https://comandapp-api.h-dev.xyz
-        #https://comandapp-api.h-dev.xyz
+        #https://api.wapifood.com
+        #https://api.wapifood.com
 
 # class ImageUserResponse(BaseModel):
 #     id: int | None = None
@@ -664,3 +665,27 @@ class UtilidadesResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# Esquema para solicitud de restablecimiento de contraseña
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+# Esquema para confirmación de restablecimiento de contraseña
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+# Esquema para respuesta de confirmación
+class PasswordResetResponse(BaseModel):
+    message: str
+
+
+
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+class EmailVerificationResponse(BaseModel):
+    token: str
+    user_uuid: str
+    message: str

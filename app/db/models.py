@@ -201,7 +201,8 @@ class Tables(Base):
     state = Column(SQLAlchemyEnum(TablesEnum), nullable=False)
     # Clave foránea a 'User'
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False) 
-    subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
+    #subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
+    subscription_amount = Column(Integer, nullable=False)
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
@@ -284,6 +285,9 @@ class Payments(Base):
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
     checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
     email = Column(String(255), nullable=True)
+    mercado_pago_customer_id = Column(String(255), nullable=True)  # Nuevo campo
+    mercado_pago_payment_id = Column(String(255), nullable=True)  # Nuevo campo
+    mercado_pago_preapproval_id = Column(String(255), nullable=True)  # Nuevo campo
 
     # Relaciones
     #order = relationship("Orders", back_populates="payments")

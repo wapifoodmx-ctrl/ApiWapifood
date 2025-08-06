@@ -16,3 +16,6 @@ stripe
 pyotp
 stripe
 python-dateutil
+resend
+jinja2
+mercadopago

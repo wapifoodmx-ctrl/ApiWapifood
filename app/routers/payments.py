@@ -13,13 +13,27 @@ from app.repository.auth import get_current_user
 from app.schemas import SubscriptionRequest
 from typing import List
 from app.enums import TablesEnum
+from app.db.models import Tables as TablesModel, TableDetails, Payments
+from app.enums import TablesEnum, SubscriptionAmount
+from mercadopago import SDK 
+import mercadopago
 
 load_dotenv()
-stripe.api_key = os.getenv("STRIPE_API_KEY")
-stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+# stripe.api_key = os.getenv("STRIPE_API_KEY")
+# stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-if not stripe.api_key:
-    raise ValueError("No se encontró la clave de API de Stripe en las variables de entorno")
+# if not stripe.api_key:
+#     raise ValueError("No se encontró la clave de API de Stripe en las variables de entorno")
+
+
+# Configura Mercado Pago
+mercado_pago_sdk = mercadopago.SDK(os.getenv("MERCADO_PAGO_ACCESS_TOKEN"))
+mercado_pago_public_key = os.getenv("MERCADO_PAGO_PUBLIC_KEY")
+mercado_pago_webhook_secret = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
+
+if not mercado_pago_sdk.access_token or not mercado_pago_public_key:
+    raise ValueError("No se encontraron las credenciales de Mercado Pago en las variables de entorno")
+
 
 router = APIRouter(
     prefix="/payments",
@@ -28,13 +42,53 @@ router = APIRouter(
 
 YOUR_DOMAIN = "http://127.0.0.1:8000"
 
+# PLAN_PRICES = {
+#     PlanType.BASICO: "price_1RMGJPAcLh3gfk7AeZCmoNOs" ,        #"prod_SGk7H4kqVBUvtP", # Reemplaza con el ID real del precio de Stripe
+#     PlanType.PROFESIONAL: "price_1RMCjmAcLh3gfk7A4QwwMBLW",
+#     PlanType.EMPRESARIAL: "price_1RMCkLAcLh3gfk7AkMlivuYU",
+#     PlanType.BASICO_IMPRESORA: "price_1RmKjEAcLh3gfk7AErXZJ3I1",
+#     PlanType.RESTAURANTE_IMPRESORA: "price_1RmKqcAcLh3gfk7ACUUqKfrK",
+#     PlanType.PLUS_RESTAURANTE_IMPRESORA: "price_1RmKv3AcLh3gfk7A1ZGDGx90"
+# }
+
+# Mapa de precios para los planes
 PLAN_PRICES = {
-    PlanType.BASICO: "price_1RMGJPAcLh3gfk7AeZCmoNOs" ,        #"prod_SGk7H4kqVBUvtP", # Reemplaza con el ID real del precio de Stripe
-    PlanType.PROFESIONAL: "price_1RMCjmAcLh3gfk7A4QwwMBLW",
-    PlanType.EMPRESARIAL: "price_1RMCkLAcLh3gfk7AkMlivuYU",
-    PlanType.BASICO_IMPRESORA: "price_1RmKjEAcLh3gfk7AErXZJ3I1",
-    PlanType.RESTAURANTE_IMPRESORA: "price_1RmKqcAcLh3gfk7ACUUqKfrK",
-    PlanType.PLUS_RESTAURANTE_IMPRESORA: "price_1RmKv3AcLh3gfk7A1ZGDGx90"
+    PlanType.BASICO: {
+        "amount": 100.0,
+        "currency": "MXN",  # Ajusta según tu país (MXN, ARS, etc.)
+        "description": "Plan Básico",
+        "plan_id": None  # Se llenará dinámicamente
+    },
+    PlanType.PROFESIONAL: {
+        "amount": 200.0,
+        "currency": "MXN",
+        "description": "Plan Profesional",
+        "plan_id": None
+    },
+    PlanType.EMPRESARIAL: {
+        "amount": 300.0,
+        "currency": "MXN",
+        "description": "Plan Empresarial",
+        "plan_id": None
+    },
+    PlanType.BASICO_IMPRESORA: {
+        "amount": 1960.0,
+        "currency": "MXN",
+        "description": "Plan Básico con Impresora",
+        "plan_id": None
+    },
+    PlanType.RESTAURANTE_IMPRESORA: {
+        "amount": 2920.0,
+        "currency": "MXN",
+        "description": "Plan Restaurante con Impresora",
+        "plan_id": None
+    },
+    PlanType.PLUS_RESTAURANTE_IMPRESORA: {
+        "amount": 3880.0,
+        "currency": "MXN",
+        "description": "Plan Plus Restaurante con Impresora",
+        "plan_id": None
+    }
 }
 
 #/ plan basico impresora : price_1RmKjEAcLh3gfk7AErXZJ3I1
@@ -44,288 +98,43 @@ PLAN_PRICES = {
 #------------------------------------------
 #----------------------------------price_1RMGJPAcLh3gfk7AeZCmoNOs es el id_del precio 
 
+# Crear planes de suscripción al iniciar la aplicación
+def create_mercado_pago_plans():
+    for plan, details in PLAN_PRICES.items():
+        try:
+            response = mercado_pago_sdk.preapproval_plan().search(filters={"reason": details["description"]})
+            existing_plans = response["response"]["results"]
+            
+            if existing_plans:
+                print(f"Plan {details['description']} ya existe: {existing_plans[0]['id']}")
+                PLAN_PRICES[plan]["plan_id"] = existing_plans[0]["id"]
+            else:
+                plan_data = {
+                    "reason": details["description"],
+                    "auto_recurring": {
+                        "frequency": 1,
+                        "frequency_type": "months" if plan in [PlanType.BASICO, PlanType.PROFESIONAL, PlanType.EMPRESARIAL] else "years",
+                        "transaction_amount": float(details["amount"]),
+                        "currency_id": details["currency"]
+                    },
+                    "back_url": f"{YOUR_DOMAIN}/payments/success",
+                    "external_reference": f"plan_{plan.value}"
+                }
+                response = mercado_pago_sdk.preapproval_plan().create(plan_data)
+                PLAN_PRICES[plan]["plan_id"] = response["response"]["id"]
+                print(f"Plan creado: {details['description']} - ID: {response['response']['id']}")
+        except Exception as e:
+            print(f"Error al crear/verificar plan {plan}: {str(e)}")
+            raise ValueError(f"Error al crear/verificar plan {plan}: {str(e)}")
 
+create_mercado_pago_plans()
 
-# Validar los price_id al iniciar la aplicación
-for plan, price_id in PLAN_PRICES.items():
-    if not price_id.startswith("price_"):
-        raise ValueError(f"El ID para el plan {plan} debe ser un price_id (comenzar con 'price_'), no un product_id: {price_id}")
-    try:
-        price = stripe.Price.retrieve(price_id)
-        if not price.recurring:
-            raise ValueError(f"El price_id para el plan {plan} no es un precio recurrente: {price_id}. Debe ser un precio recurrente para usar mode='subscription'.")
-    except stripe.error.InvalidRequestError as e:
-        raise ValueError(f"El price_id para el plan {plan} no es válido o no existe en tu cuenta de Stripe: {price_id}. Error: {str(e)}")
+# Actualizar SubscriptionRequest
+class SubscriptionRequest(BaseModel):
+    plan: PlanType
+    card_token: str  # Token de la tarjeta generado por el SDK de Mercado Pago
 
-
-
-#-----------------------------------------------------------------
-#-----------------------------------------------------------------
-
-
-# @router.post("/create-checkout-session")
-# async def create_checkout_session(
-#     subscription_request: SubscriptionRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     try:
-#         price_id = PLAN_PRICES.get(subscription_request.plan)
-#         if not price_id:
-#             raise HTTPException(status_code=400, detail="Plan no válido")
-
-#         # Crear un cliente de Stripe si no existe
-#         customer = stripe.Customer.create(email=current_user.email)
-#         checkout_session = stripe.checkout.Session.create(
-#             line_items=[
-#                 {"price": price_id, "quantity": 1},
-#             ],
-#             mode="subscription",
-#             customer=customer.id,
-#             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-#             #success_url=YOUR_DOMAIN + "/payments/success?session_id={CHECKOUT_SESSION_ID}",
-#             cancel_url="https://comandapp.h-dev.xyz/error",
-#             #cancel_url=YOUR_DOMAIN + "/payments/cancel",
-#             metadata={"user_id": str(current_user.id_users)},
-#         )
-
-#         # Log antes de guardar el registro
-#         print(f"Checkout Session creada: ID={checkout_session.id}")
-#         print(f"Customer: {checkout_session.customer}")
-#         print(f"Subscription: {checkout_session.subscription}")
-#         print(f"URL: {checkout_session.url}")
-
-#         payment = Payments(
-#             payment_method="pasarela",
-#             amount=0,
-#             date=datetime.utcnow(),
-#             user_id=current_user.id_users,
-#             stripe_customer_id=checkout_session.customer,
-#             subscription_id=checkout_session.subscription,
-#             plan=subscription_request.plan.value,
-#             status=PaymentStatus.PENDING,
-#             checkout_session_id=checkout_session.id,
-#             email=current_user.email, # Guardar el email del usuario
-#         )
-#         print(f"Registro a guardar: {payment.__dict__}")
-#         db.add(payment)
-#         try:
-#             db.commit()
-#             db.refresh(payment)
-#             print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
-#         except Exception as e:
-#             db.rollback()
-#             print(f"Error al guardar el pago: {str(e)}")
-#             raise HTTPException(status_code=500, detail=f"Error al guardar el pago: {str(e)}")
-
-#         return JSONResponse(
-#             status_code=200,
-#             content={"checkout_url": checkout_session.url}
-#         )
-
-#     except stripe.error.StripeError as e:
-#         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-#     except Exception as e:
-#         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
-
-######################################################################################################
-# @router.post("/create-checkout-session")
-# async def create_checkout_session(
-#     subscription_request: SubscriptionRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     try:
-#         price_id = PLAN_PRICES.get(subscription_request.plan)
-#         if not price_id:
-#             raise HTTPException(status_code=400, detail="Plan no válido")
-
-#         # Crear un cliente de Stripe si no existe
-#         customer = stripe.Customer.create(email=current_user.email)
-#         checkout_session = stripe.checkout.Session.create(
-#             line_items=[
-#                 {"price": price_id, "quantity": 1},
-#             ],
-#             mode="subscription",
-#             customer=customer.id,
-#             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-#             cancel_url="https://comandapp.h-dev.xyz/error",
-#             metadata={"user_id": str(current_user.id_users)},
-#         )
-
-#         # Log antes de guardar el registro
-#         print(f"Sesión de Checkout creada: ID={checkout_session.id}")
-#         print(f"Cliente: {checkout_session.customer}")
-#         print(f"Suscripción: {checkout_session.subscription}")
-#         print(f"URL: {checkout_session.url}")
-
-#         payment = Payments(
-#             payment_method="pasarela",
-#             amount=0,  # Esto se actualizará con el webhook de Stripe
-#             date=datetime.utcnow(),
-#             user_id=current_user.id_users,
-#             stripe_customer_id=checkout_session.customer,
-#             subscription_id=checkout_session.subscription,
-#             plan=subscription_request.plan.value,
-#             status=PaymentStatus.PENDING,
-#             checkout_session_id=checkout_session.id,
-#             email=current_user.email,
-#         )
-#         print(f"Registro a guardar: {payment.__dict__}")
-#         db.add(payment)
-#         try:
-#             db.commit()
-#             db.refresh(payment)
-#             print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
-
-#             # Validar y crear mesas o detalles de mesas según el plan
-#             plan_mesas = {
-#                 "basico": 1,
-#                 "profesional": 16,
-#                 "empresarial": 26
-#             }
-#             mesas = plan_mesas.get(subscription_request.plan.value, 0)
-#             if mesas == 0:
-#                 raise HTTPException(status_code=400, detail="Plan no reconocido")
-
-#             # Verificar si ya existen detalles o mesas para evitar duplicados
-#             existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
-#             existing_tables = db.query(Tables).filter(Tables.user_id == current_user.id_users).all()
-#             if existing_details or existing_tables:
-#                 raise HTTPException(status_code=400, detail="Las mesas o detalles ya están creados para este usuario")
-
-#             # Crear detalles de mesas (puedes elegir entre create_table_details o generate_tables_sub)
-#             table_details = []
-#             for i in range(1, mesas + 1):
-#                 detail = TableDetails(
-#                     user_id=current_user.id_users,
-#                     table_number=i,
-#                     estado=TablesEnum.Libre,
-#                     cantidad_ventas_por_mesa=0.0
-#                 )
-#                 table_details.append(detail)
-#             db.add_all(table_details)
-#             db.commit()
-
-#             print(f"Se han creado {mesas} detalles de mesas para el usuario")
-#         except Exception as e:
-#             db.rollback()
-#             print(f"Error al crear detalles de mesas: {str(e)}")
-#             raise HTTPException(status_code=500, detail=f"Error al crear detalles de mesas: {str(e)}")
-
-#         return JSONResponse(
-#             status_code=200,
-#             content={"checkout_url": checkout_session.url}
-#         )
-
-#     except stripe.error.StripeError as e:
-#         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-#     except Exception as e:
-#         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
-    
-
-# @router.post("/create-checkout-session")
-# async def create_checkout_session(
-#     subscription_request: SubscriptionRequest,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     try:
-#         price_id = PLAN_PRICES.get(subscription_request.plan)
-#         if not price_id:
-#             raise HTTPException(status_code=400, detail="Plan no válido")
-
-#         # Verificar si ya existen detalles o mesas ANTES de crear el pago
-#         existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
-#         existing_tables = db.query(Tables).filter(Tables.user_id == current_user.id_users).all()
-        
-#         # Crear un cliente de Stripe si no existe
-#         customer = stripe.Customer.create(email=current_user.email)
-#         checkout_session = stripe.checkout.Session.create(
-#             line_items=[
-#                 {"price": price_id, "quantity": 1},
-#             ],
-#             mode="subscription",
-#             customer=customer.id,
-#             success_url="https://comandapp.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-#             cancel_url="https://comandapp.h-dev.xyz/error",
-#             metadata={"user_id": str(current_user.id_users)},
-#         )
-
-#         # Log antes de guardar el registro
-#         print(f"Sesión de Checkout creada: ID={checkout_session.id}")
-#         print(f"Cliente: {checkout_session.customer}")
-#         print(f"Suscripción: {checkout_session.subscription}")
-#         print(f"URL: {checkout_session.url}")
-
-#         payment = Payments(
-#             payment_method="pasarela",
-#             amount=0,  # Esto se actualizará con el webhook de Stripe
-#             date=datetime.utcnow(),
-#             user_id=current_user.id_users,
-#             stripe_customer_id=checkout_session.customer,
-#             subscription_id=checkout_session.subscription,
-#             plan=subscription_request.plan.value,
-#             status=PaymentStatus.PENDING,
-#             checkout_session_id=checkout_session.id,
-#             email=current_user.email,
-#         )
-#         print(f"Registro a guardar: {payment.__dict__}")
-#         db.add(payment)
-        
-#         try:
-#             db.commit()
-#             db.refresh(payment)
-#             print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
-
-#             # Solo crear mesas si NO existen previamente
-#             if not existing_details and not existing_tables:
-#                 # Validar y crear mesas o detalles de mesas según el plan
-#                 plan_mesas = {
-#                     PlanType.BASICO.value: 1,
-#                     PlanType.PROFESIONAL.value: 16,
-#                     PlanType.EMPRESARIAL.value: 26,
-#                     PlanType.BASICO_IMPRESORA.value: 1,
-#                     PlanType.RESTAURANTE_IMPRESORA.value: 16,
-#                     PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
-#                 }
-#                 mesas = plan_mesas.get(subscription_request.plan.value, 0)
-#                 if mesas == 0:
-#                     raise HTTPException(status_code=400, detail="Plan no reconocido")
-
-#                 # Crear detalles de mesas
-#                 table_details = []
-#                 for i in range(1, mesas + 1):
-#                     detail = TableDetails(
-#                         user_id=current_user.id_users,
-#                         table_number=i,
-#                         estado=TablesEnum.Libre,
-#                         cantidad_ventas_por_mesa=0.0
-#                     )
-#                     table_details.append(detail)
-#                 db.add_all(table_details)
-#                 db.commit()
-
-#                 print(f"Se han creado {mesas} detalles de mesas para el usuario")
-#             else:
-#                 print(f"Las mesas ya existen para el usuario {current_user.id_users}, omitiendo creación")
-
-#         except Exception as e:
-#             db.rollback()
-#             print(f"Error al procesar pago y mesas: {str(e)}")
-#             raise HTTPException(status_code=500, detail=f"Error al procesar pago y mesas: {str(e)}")
-
-#         return JSONResponse(
-#             status_code=200,
-#             content={"checkout_url": checkout_session.url}
-#         )
-
-#     except stripe.error.StripeError as e:
-#         raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-#     except Exception as e:
-#         raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
-
-
+# Crear sesión de checkout
 @router.post("/create-checkout-session")
 async def create_checkout_session(
     subscription_request: SubscriptionRequest,
@@ -333,171 +142,101 @@ async def create_checkout_session(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        price_id = PLAN_PRICES.get(subscription_request.plan)
-        if not price_id:
-            raise HTTPException(status_code=400, detail="Plan no válido")
+        plan_details = PLAN_PRICES.get(subscription_request.plan)
+        if not plan_details or not plan_details.get("plan_id"):
+            raise HTTPException(status_code=400, detail="Plan no válido o no configurado")
 
-        # Verificar si ya existen detalles o mesas ANTES de crear el pago
-        existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
-        existing_tables = db.query(Tables).filter(Tables.user_id == current_user.id_users).all()
-        
-        # Crear un cliente de Stripe si no existe
-        customer = stripe.Customer.create(email=current_user.email)
-        checkout_session = stripe.checkout.Session.create(
-            line_items=[
-                {"price": price_id, "quantity": 1},
-            ],
-            mode="subscription",
-            customer=customer.id,
-            success_url="https://comandapp-api.h-dev.xyz/success/?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="https://comandapp-api.h-dev.xyz/error",
-            metadata={"user_id": str(current_user.id_users)},
-        )
+        # Crear cliente en Mercado Pago
+        customer_data = {
+            "email": current_user.email,
+            "identification": {"type": "DNI", "number": "12345678"}  # Ajusta según tu caso
+        }
+        customer_response = mercado_pago_sdk.customer().create(customer_data)
+        mercado_pago_customer_id = customer_response["response"]["id"]
 
-        # Log antes de guardar el registro
-        print(f"Sesión de Checkout creada: ID={checkout_session.id}")
-        print(f"Cliente: {checkout_session.customer}")
-        print(f"Suscripción: {checkout_session.subscription}")
-        print(f"URL: {checkout_session.url}")
+        # Crear suscripción
+        subscription_data = {
+            "preapproval_plan_id": plan_details["plan_id"],
+            "reason": plan_details["description"],
+            "payer_email": current_user.email,
+            "card_token": subscription_request.card_token,
+            "external_reference": f"user_{current_user.id_users}",
+            "back_url": f"{YOUR_DOMAIN}/payments/success?session_id={{CHECKOUT_SESSION_ID}}",
+            "auto_recurring": {
+                "frequency": 1,
+                "frequency_type": "months" if subscription_request.plan in [PlanType.BASICO, PlanType.PROFESIONAL, PlanType.EMPRESARIAL] else "years",
+                "transaction_amount": float(plan_details["amount"]),
+                "currency_id": plan_details["currency"]
+            }
+        }
 
-        # Asegurarse de usar el valor del enum
-        plan_value = subscription_request.plan.value
-        print(f"Valor del plan a insertar: {plan_value}")
+        subscription_response = mercado_pago_sdk.preapproval().create(subscription_data)
+        subscription = subscription_response["response"]
 
-         # Calcular la fecha de caducidad según el plan
+        # Calcular fecha de expiración
         current_date = datetime.utcnow()
-        if subscription_request.plan in [PlanType.BASICO_IMPRESORA, PlanType.RESTAURANTE_IMPRESORA, PlanType.PLUS_RESTAURANTE_IMPRESORA]:
-            subscription_end_date = current_date + timedelta(days=365)  # 1 año para planes con impresora
-        else:
-            subscription_end_date = current_date + timedelta(days=30)  # 1 mes para planes mensuales
+        subscription_end_date = current_date + timedelta(days=365 if subscription_request.plan in [
+            PlanType.BASICO_IMPRESORA,
+            PlanType.RESTAURANTE_IMPRESORA,
+            PlanType.PLUS_RESTAURANTE_IMPRESORA
+        ] else 30)
 
+        # Guardar pago
         payment = Payments(
-            payment_method="pasarela",
-            amount=0,  # Esto se actualizará con el webhook de Stripe
+            payment_method=PaymentMethodEnum.pasarela,
+            amount=plan_details["amount"],
             date=datetime.utcnow(),
+            subscription_end_date=subscription_end_date,
             user_id=current_user.id_users,
-            stripe_customer_id=checkout_session.customer,
-            subscription_id=checkout_session.subscription,
-            plan=plan_value,  # Usar el valor del enum explícitamente
+            mercado_pago_customer_id=mercado_pago_customer_id,
+            mercado_pago_preapproval_id=subscription["id"],
+            subscription_id=subscription["id"],
+            checkout_session_id=subscription["id"],
+            plan=subscription_request.plan,
             status=PaymentStatus.PENDING,
-            checkout_session_id=checkout_session.id,
-            email=current_user.email,
-            subscription_end_date=subscription_end_date  # Guardar la fecha de caducidad
+            email=current_user.email
         )
-        print(f"Registro a guardar: {payment.__dict__}")
         db.add(payment)
-        
-        try:
-            db.commit()
-            db.refresh(payment)
-            print(f"Pago guardado: ID={payment.id_payments}, Checkout Session ID={payment.checkout_session_id}, Customer ID={payment.stripe_customer_id}, Subscription ID={payment.subscription_id}")
-
-            # Solo crear mesas si NO existen previamente
-            if not existing_details and not existing_tables:
-                # Validar y crear mesas o detalles de mesas según el plan
-                plan_mesas = {
-                    PlanType.BASICO.value: 1,
-                    PlanType.PROFESIONAL.value: 16,
-                    PlanType.EMPRESARIAL.value: 26,
-                    PlanType.BASICO_IMPRESORA.value: 1,
-                    PlanType.RESTAURANTE_IMPRESORA.value: 16,
-                    PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
-                }
-                mesas = plan_mesas.get(subscription_request.plan.value, 0)
-                if mesas == 0:
-                    raise HTTPException(status_code=400, detail="Plan no reconocido")
-
-                # Crear detalles de mesas
-                table_details = []
-                for i in range(1, mesas + 1):
-                    detail = TableDetails(
-                        user_id=current_user.id_users,
-                        table_number=i,
-                        estado=TablesEnum.Libre,
-                        cantidad_ventas_por_mesa=0.0
-                    )
-                    table_details.append(detail)
-                db.add_all(table_details)
-                db.commit()
-
-                print(f"Se han creado {mesas} detalles de mesas para el usuario")
-            else:
-                print(f"Las mesas ya existen para el usuario {current_user.id_users}, omitiendo creación")
-
-        except Exception as e:
-            db.rollback()
-            print(f"Error al procesar pago y mesas: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Error al procesar pago y mesas: {str(e)}")
+        db.commit()
+        db.refresh(payment)
+        print(f"Pago guardado: ID={payment.id_payments}, Preapproval ID={payment.mercado_pago_preapproval_id}")
 
         return JSONResponse(
             status_code=200,
-            content={"checkout_url": checkout_session.url}
+            content={"checkout_url": subscription["init_point"]}
         )
 
-    except stripe.error.StripeError as e:
-        raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=403, detail=f"Error inesperado: {str(e)}")
+        print(f"Error al crear suscripción: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al crear suscripción: {str(e)}")
 
-#-----------------------------------------------------------------
-#-----------------------------------------------------------------
-
-
-@router.post("/create-portal-session", status_code=status.HTTP_200_OK)  # Cambia a 200
-async def create_portal_session(
-    session_id: str = Form(...),
-    current_user: dict = Depends(get_current_user)
-):
-    try:
-        # Obtener el checkout_session para extraer el stripe_customer_id
-        checkout_session = stripe.checkout.Session.retrieve(session_id)
-        stripe_customer_id = checkout_session.customer
-
-        if not stripe_customer_id:
-            raise HTTPException(status_code=400, detail="No se encontró stripe_customer_id en la sesión")
-
-        # Crear la sesión del portal
-        portal_session = stripe.billing_portal.Session.create(
-            customer=stripe_customer_id,
-            return_url="http://127.0.0.1:8000",
-        )
-
-        # Devolver JSON en lugar de redirigir
-        return {"portal_url": portal_session.url}
-
-    except stripe.error.StripeError as e:
-        raise HTTPException(status_code=400, detail=f"Error de Stripe: {str(e)}")
-    
-##----------------------------------------------------------------------------
-#-----------------------------------------------------------------------------
-
-
-
+# Webhook
 @router.post("/webhook", status_code=status.HTTP_200_OK)
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature")
-
+async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, stripe_webhook_secret)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail="Carga inválida")
-    except stripe.error.SignatureVerificationError as e:
-        raise HTTPException(status_code=400, detail="Firma inválida")
+        payload = await request.json()
+        event_type = payload.get("type")
+        data = payload.get("data", {})
 
-    try:
-        if event["type"] == "checkout.session.completed":
-            checkout_session = event["data"]["object"]
-            subscription_id = checkout_session.get("subscription")
-            print(f"Procesando checkout.session.completed - Session ID: {checkout_session.id}, Subscription ID: {subscription_id}")
+        print(f"Webhook recibido - Tipo: {event_type}, Datos: {data}")
 
-            if not subscription_id:
-                print("No subscription_id in event")
-                return {"status": "ignored", "message": "No subscription_id in event"}
+        if event_type == "payment":
+            payment_id = data.get("id")
+            if not payment_id:
+                print("No payment_id in event")
+                return {"status": "ignored", "message": "No payment_id in event"}
 
-            payment = db.query(Payments).filter(Payments.checkout_session_id == checkout_session.id).first()
+            payment_response = mercado_pago_sdk.payment().get(payment_id)
+            payment_data = payment_response["response"]
+
+            preapproval_id = payment_data.get("preapproval_id")
+            if not preapproval_id:
+                print("No preapproval_id in payment")
+                return {"status": "ignored", "message": "No preapproval_id in payment"}
+
+            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
             if not payment:
-                print(f"Pago no encontrado para checkout_session_id: {checkout_session.id}")
+                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
@@ -505,136 +244,74 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 print(f"Usuario no encontrado para user_id: {payment.user_id}")
                 return {"status": "ignored", "message": "User not found"}
 
-            payment.subscription_id = subscription_id or payment.subscription_id
-            payment.stripe_customer_id = checkout_session.customer or payment.stripe_customer_id
+            payment.mercado_pago_payment_id = payment_id
+            payment.amount = payment_data.get("transaction_amount", payment.amount)
+            payment.status = PaymentStatus.COMPLETED if payment_data.get("status") == "approved" else PaymentStatus.FAILED
+            payment.email = user.email
 
+            days_to_add = 365 if payment.plan in [
+                PlanType.BASICO_IMPRESORA,
+                PlanType.RESTAURANTE_IMPRESORA,
+                PlanType.PLUS_RESTAURANTE_IMPRESORA
+            ] else 30
             try:
-                subscription = stripe.Subscription.retrieve(subscription_id)
-                print(f"Subscription retrieved: {subscription}")
-            except stripe.error.InvalidRequestError as e:
-                print(f"Error al recuperar la suscripción: {str(e)}")
-                return {"status": "error", "message": f"Error al recuperar la suscripción: {str(e)}"}
-
-            try:
-                if subscription.plan and subscription.plan.amount:
-                    amount = subscription.plan.amount / 100
+                if payment_data.get("date_approved"):
+                    start_date = datetime.strptime(payment_data["date_approved"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                    subscription_end_date = start_date + timedelta(days=days_to_add)
                 else:
-                    price_id = subscription.plan.id if subscription.plan else None
-                    if price_id:
-                        price = stripe.Price.retrieve(price_id)
-                        amount = price.unit_amount / 100
-                    else:
-                        amount = 0
-                payment.amount = amount
-                print(f"Amount set to: {amount}")
-            except stripe.error.InvalidRequestError as e:
-                print(f"Error al recuperar el precio: {str(e)}")
-                amount = 0
-                payment.amount = amount
-
-            # Manejo aún más robusto de current_period_end
-            subscription_end_date = None
-            try:
-                # Verificar primero si el atributo existe y es accesible
-                current_period_end = getattr(subscription, 'current_period_end', None)
-                print(f"Valor de current_period_end: {current_period_end}")
-                if current_period_end is not None and isinstance(current_period_end, (int, float)) and current_period_end > 0:
-                    subscription_end_date = datetime.utcfromtimestamp(current_period_end)
-                    print(f"Subscription end date from current_period_end: {subscription_end_date}")
-                else:
-                    print(f"current_period_end no válido o ausente: {current_period_end}")
-                    raise ValueError("current_period_end no disponible o inválido")
-            except (ValueError, TypeError, OSError) as e:
-                print(f"Error al procesar current_period_end: {str(e)}")
-                try:
-                    # Verificar current_period_start de manera similar
-                    current_period_start = getattr(subscription, 'current_period_start', None)
-                    plan_interval = subscription.plan.interval if subscription.plan and hasattr(subscription.plan, 'interval') else None
-                    print(f"current_period_start: {current_period_start}, plan.interval: {plan_interval}")
-                    if current_period_start is not None and isinstance(current_period_start, (int, float)) and current_period_start > 0 and plan_interval:
-                        start_date = datetime.utcfromtimestamp(current_period_start)
-                        if plan_interval == "month":
-                            subscription_end_date = start_date + timedelta(days=30)
-                        elif plan_interval == "year":
-                            subscription_end_date = start_date + timedelta(days=365)
-                        else:
-                            subscription_end_date = start_date + timedelta(days=30)
-                        print(f"Subscription end date calculated from start: {subscription_end_date}")
-                    else:
-                        print(f"current_period_start o plan.interval no disponibles: start={current_period_start}, interval={plan_interval}")
-                        subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                        print(f"Subscription end date calculated manually: {subscription_end_date}")
-                except (ValueError, TypeError, OSError) as e:
-                    print(f"Error al calcular la fecha de finalización: {str(e)}")
-                    subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                    print(f"Usando fecha por defecto: {subscription_end_date}")
+                    subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+                print(f"subscription_end_date: {subscription_end_date}")
+            except Exception as e:
+                print(f"Error al calcular subscription_end_date: {str(e)}")
+                subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
 
             payment.subscription_end_date = subscription_end_date
-            payment.status = PaymentStatus.COMPLETED
-            payment.email = user.email
-            try:
-                db.commit()
-                db.refresh(payment)
-                print(f"Pago actualizado en la base de datos: {payment.__dict__}")
-            except Exception as e:
-                db.rollback()
-                print(f"Error al actualizar la base de datos: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Error al actualizar la base de datos: {str(e)}")
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.__dict__}")
 
-        elif event["type"] == "customer.subscription.updated":
-            subscription = event["data"]["object"]
-            subscription_id = subscription.get("id")
+            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, payment.amount)
 
-            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+        elif event_type == "preapproval":
+            preapproval_id = data.get("id")
+            preapproval_response = mercado_pago_sdk.preapproval().get(preapproval_id)
+            preapproval_data = preapproval_response["response"]
+
+            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
             if not payment:
+                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
             if not user:
+                print(f"Usuario no encontrado para user_id: {payment.user_id}")
                 return {"status": "ignored", "message": "User not found"}
 
-            # Actualizar el monto si cambió el plan
-            if subscription.plan and subscription.plan.amount:
-                amount = subscription.plan.amount / 100
-                payment.amount = amount
-                print(f"Updated amount to: {amount}")
-
-            # Actualizar la fecha de finalización
-            if subscription.current_period_end:
-                subscription_end_date = datetime.utcfromtimestamp(subscription.current_period_end)
-                payment.subscription_end_date = subscription_end_date
-                print(f"Updated subscription end date to: {subscription_end_date}")
-            else:
-                if subscription.current_period_start and subscription.plan and subscription.plan.interval:
-                    start_date = datetime.utcfromtimestamp(subscription.current_period_start)
-                    if subscription.plan.interval == "month":
-                        subscription_end_date = start_date + timedelta(days=30)
-                    elif subscription.plan.interval == "year":
-                        subscription_end_date = start_date + timedelta(days=365)
-                    else:
-                        subscription_end_date = start_date + timedelta(days=30)
-                    payment.subscription_end_date = subscription_end_date
-                    print(f"Calculated subscription end date: {subscription_end_date}")
-                else:
-                    payment.subscription_end_date = datetime.utcnow() + timedelta(days=30)
-                    print(f"Manually set subscription end date: {payment.subscription_end_date}")
-
-            # Actualizar el estado si es necesario (por ejemplo, si se reactiva)
-            if subscription.status == "active" or subscription.status == "trialing":
-                payment.status = PaymentStatus.COMPLETED
-            elif subscription.status == "canceled":
-                payment.status = PaymentStatus.FAILED
+            payment.status = PaymentStatus.COMPLETED if preapproval_data.get("status") == "authorized" else PaymentStatus.FAILED
             payment.email = user.email
+
+            days_to_add = 365 if payment.plan in [
+                PlanType.BASICO_IMPRESORA,
+                PlanType.RESTAURANTE_IMPRESORA,
+                PlanType.PLUS_RESTAURANTE_IMPRESORA
+            ] else 30
+            if preapproval_data.get("next_payment_date"):
+                subscription_end_date = datetime.strptime(preapproval_data["next_payment_date"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                payment.subscription_end_date = subscription_end_date
+            else:
+                payment.subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+
             db.commit()
             db.refresh(payment)
-            print(f"Payment updated in DB: {payment.__dict__}")
+            print(f"Suscripción actualizada: {payment.__dict__}")
 
-        elif event["type"] == "customer.subscription.deleted":
-            subscription = event["data"]["object"]
-            subscription_id = subscription.get("id")
+            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, payment.amount)
 
-            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
+        elif event_type == "preapproval.canceled":
+            preapproval_id = data.get("id")
+            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
             if not payment:
+                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
@@ -642,129 +319,83 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 payment.email = user.email
 
             payment.status = PaymentStatus.FAILED
-            payment.subscription_end_date = None  # Limpia la fecha de finalización
+            payment.subscription_end_date = None
             db.commit()
             db.refresh(payment)
-            print(f"Payment canceled in DB: {payment.__dict__}")
+            print(f"Suscripción cancelada: {payment.__dict__}")
 
-        elif event["type"] == "payment_intent.succeeded":
-            payment_intent = event["data"]["object"]
-            subscription_id = payment_intent.get("metadata", {}).get("subscription_id")
-            if not subscription_id:
-                if payment_intent.get("charges", {}).get("data"):
-                    charge = payment_intent["charges"]["data"][0]
-                    invoice_id = charge.get("invoice")
-                    if invoice_id:
-                        invoice = stripe.Invoice.retrieve(invoice_id)
-                        subscription_id = invoice.get("subscription")
-
-            if not subscription_id:
-                return {"status": "ignored", "message": "No subscription_id in payment_intent"}
-
-            payment = db.query(Payments).filter(Payments.subscription_id == subscription_id).first()
-            if not payment:
-                return {"status": "ignored", "message": "Payment not found"}
-
-            user = db.query(User).filter(User.id_users == payment.user_id).first()
-            if user:
-                payment.email = user.email
-
-            payment.stripe_payment_intent_id = payment_intent["id"]
+            db.query(Tables).filter(Tables.user_id == payment.user_id).delete()
+            db.query(TableDetails).filter(TableDetails.user_id == payment.user_id).delete()
             db.commit()
-            db.refresh(payment)
+            print(f"Se eliminaron todas las mesas para el usuario {payment.user_id}")
 
         else:
-            return {"status": "ignored", "message": f"Event type {event['type']} not handled"}
+            print(f"Evento no manejado: {event_type}")
+            return {"status": "ignored", "message": f"Event type {event_type} not handled"}
 
         return {"status": "success"}
 
     except Exception as e:
+        print(f"Error al procesar webhook: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
-    
 
-#-----------------------------------------------------------------
-#-----------------------------------------------------------------
-
-    
+# Endpoint de éxito
 @router.get("/success", status_code=status.HTTP_200_OK)
 async def payment_success(request: Request, db: Session = Depends(get_db)):
     session_id = request.query_params.get("session_id")
     if not session_id:
         raise HTTPException(status_code=400, detail="Falta el ID de la sesión")
 
-    # Obtener la sesión de checkout para buscar el customer_id y subscription_id
-    checkout_session = stripe.checkout.Session.retrieve(session_id)
-    print(f"Procesando /success - Session ID: {session_id}, Customer: {checkout_session.customer}, Subscription: {checkout_session.subscription}")
+    print(f"Procesando /success - Session ID: {session_id}")
 
-    # Buscar el pago usando checkout_session_id
-    payment = db.query(Payments).filter(Payments.checkout_session_id == session_id).first()
-    print(f"Resultado de búsqueda por checkout_session_id ({session_id}): {payment}")
-    
-    if not payment and checkout_session.subscription:
-        payment = db.query(Payments).filter(Payments.subscription_id == checkout_session.subscription).first()
-        print(f"Resultado de búsqueda por subscription_id ({checkout_session.subscription}): {payment}")
-    
-    if not payment and checkout_session.customer:
-        payment = db.query(Payments).filter(Payments.stripe_customer_id == checkout_session.customer).first()
-        print(f"Resultado de búsqueda por stripe_customer_id ({checkout_session.customer}): {payment}")
-
+    payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == session_id).first()
     if not payment:
-        user_id = checkout_session.metadata.get("user_id")
-        if user_id:
-            payment = db.query(Payments).filter(
-                Payments.user_id == int(user_id),
-                Payments.checkout_session_id == session_id
-            ).first()
-            print(f"Resultado de búsqueda por user_id ({user_id}) y checkout_session_id: {payment}")
-
-    if not payment:
+        print(f"Pago no encontrado para mercado_pago_preapproval_id: {session_id}")
         raise HTTPException(status_code=404, detail="Pago no encontrado")
 
-    # Validar que el usuario asociado al pago exista
     user = db.query(User).filter(User.id_users == payment.user_id).first()
     if not user:
+        print(f"Usuario no encontrado para user_id: {payment.user_id}")
         raise HTTPException(status_code=404, detail="Usuario asociado al pago no encontrado")
 
-    # Actualizar subscription_id si no estaba disponible
-    if checkout_session.subscription and not payment.subscription_id:
-        payment.subscription_id = checkout_session.subscription
-        db.commit()
-        db.refresh(payment)
+    try:
+        preapproval = mercado_pago_sdk.preapproval().get(session_id)["response"]
+        if preapproval["status"] == "authorized":
+            payment.status = PaymentStatus.COMPLETED
+            if preapproval.get("next_payment_date"):
+                payment.subscription_end_date = datetime.strptime(preapproval["next_payment_date"], "%Y-%m-%dT%H:%M:%S.%f%z")
+            db.commit()
+            db.refresh(payment)
+            print(f"Pago actualizado: {payment.__dict__}")
+    except Exception as e:
+        print(f"Error al verificar suscripción: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al verificar suscripción: {str(e)}")
 
-    # Actualizar el estado si no está completado
-    if payment.status != PaymentStatus.COMPLETED:
-        payment.status = PaymentStatus.COMPLETED if checkout_session.payment_status == "paid" else PaymentStatus.FAILED
-        db.commit()
-        db.refresh(payment)
+    subscription_end_date = payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
+    return {
+        "message": "¡Suscripción creada con éxito!",
+        "status": payment.status.value,
+        "user_email": user.email,
+        "subscription_end_date": subscription_end_date
+    }
 
-    return {"message": "¡Suscripción creada con éxito!", "status": payment.status.value, "user_email": user.email}
-
+# Endpoint de cancelación
 @router.get("/cancel", status_code=status.HTTP_200_OK)
 async def payment_cancel():
     return {"message": "Suscripción cancelada."}
 
-#-----------------------------------------------------------------
-#-----------------------------------------------------------------
-
-
+# Verificar pagos
 @router.get("/check-payment")
 async def check_payment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Usar el correo del usuario autenticado
     user_email = current_user.email
     print(f"Buscando pagos para el correo: {user_email}")
 
-    # Definir el límite de 30 días
     cutoff_date = datetime.utcnow() - timedelta(days=30)
-    print(f"Fecha límite para los pagos: {cutoff_date}")
-
-    # Fecha actual para verificar suscripciones activas
     current_time = datetime.utcnow()
-    print(f"Fecha actual: {current_time}")
 
-    # Buscar la última suscripción activa
     payment = db.query(Payments).filter(
         Payments.email == user_email,
         Payments.date >= cutoff_date,
@@ -787,130 +418,112 @@ async def check_payment(
         "has_active_subscription": True,
         "payment": {
             "id": payment.id_payments,
-            "amount": payment.amount,
+            "amount": float(payment.amount),
             "date": payment.date.isoformat(),
-            "plan": payment.plan,
-            "status": payment.status,
+            "plan": payment.plan.value,
+            "status": payment.status.value,
             "subscription_end_date": payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
         }
     }
 
-#-----------------------------------------------------------------
-#-----------------------------------------------------------------
-
-
-
-@router.get("/success/{session_id}", status_code=status.HTTP_200_OK)
-async def payment_success(
-    session_id: str,
-    db: Session = Depends(get_db)
-):
-    print(f"Recibido session_id en /success: {session_id}")
-
-    # Validar que session_id no esté vacío
-    if not session_id:
-        print("Error: session_id está vacío")
-        raise HTTPException(status_code=400, detail="Falta el ID de la sesión")
-
-    # Obtener la sesión de checkout para buscar el customer_id y subscription_id
-    try:
-        checkout_session = stripe.checkout.Session.retrieve(session_id)
-        print(f"Procesando /success - Session ID: {session_id}, Customer: {checkout_session.customer}, Subscription: {checkout_session.subscription}")
-    except stripe.error.InvalidRequestError as e:
-        print(f"Error al recuperar la sesión de Stripe: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error al recuperar la sesión de Stripe: {str(e)}")
-
-    # Buscar el pago usando checkout_session_id
-    payment = db.query(Payments).filter(Payments.checkout_session_id == session_id).first()
-    print(f"Resultado de búsqueda por checkout_session_id ({session_id}): {payment}")
-    
-    if not payment and checkout_session.subscription:
-        payment = db.query(Payments).filter(Payments.subscription_id == checkout_session.subscription).first()
-        print(f"Resultado de búsqueda por subscription_id ({checkout_session.subscription}): {payment}")
-    
-    if not payment and checkout_session.customer:
-        payment = db.query(Payments).filter(Payments.stripe_customer_id == checkout_session.customer).first()
-        print(f"Resultado de búsqueda por stripe_customer_id ({checkout_session.customer}): {payment}")
-
-    if not payment:
-        user_id = checkout_session.metadata.get("user_id")
-        if user_id:
-            payment = db.query(Payments).filter(
-                Payments.user_id == int(user_id),
-                Payments.checkout_session_id == session_id
-            ).first()
-            print(f"Resultado de búsqueda por user_id ({user_id}) y checkout_session_id: {payment}")
-
-    if not payment:
-        print("Error: No se encontró el pago después de todas las búsquedas")
-        raise HTTPException(status_code=404, detail="Pago no encontrado")
-
-    # Validar que el usuario asociado al pago exista
-    user = db.query(User).filter(User.id_users == payment.user_id).first()
-    if not user:
-        print(f"Error: No se encontró el usuario asociado al pago (user_id: {payment.user_id})")
-        raise HTTPException(status_code=404, detail="Usuario asociado al pago no encontrado")
-
-    # Actualizar subscription_id si no estaba disponible
-    if checkout_session.subscription and not payment.subscription_id:
-        payment.subscription_id = checkout_session.subscription
-        db.commit()
-        db.refresh(payment)
-        print(f"subscription_id actualizado: {payment.subscription_id}")
-
-    # Actualizar el estado si no está completado
-    if payment.status != PaymentStatus.COMPLETED:
-        payment.status = PaymentStatus.COMPLETED if checkout_session.payment_status == "paid" else PaymentStatus.FAILED
-        db.commit()
-        db.refresh(payment)
-        print(f"Estado actualizado: {payment.status}")
-
-    # Preparar la fecha de finalización para la respuesta
-    subscription_end_date = payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
-
-    print("Pago encontrado, devolviendo respuesta")
-    return {
-        "message": "¡Suscripción creada con éxito!",
-        "status": payment.status.value,
-        "user_email": user.email,
-        "subscription_end_date": subscription_end_date
-    }
-
-#--------------------------------------------------------------------
-#--------------------------------------------------------------------
-
-# Nuevo endpoint para obtener los pagos del usuario autenticado
-@router.get("/me", status_code=status.HTTP_200_OK, response_model=List[dict])
+# Obtener pagos del usuario
+@router.get("/me", status_code=status.HTTP_200_OK, response_model=List[PaymentResponse])
 async def get_user_payments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Buscar todos los pagos asociados al user_id del usuario autenticado
     payments = db.query(Payments).filter(Payments.user_id == current_user.id_users).all()
     
     if not payments:
         raise HTTPException(status_code=404, detail="No se encontraron pagos para este usuario")
 
-    # Preparar la lista de pagos con los datos formateados
-    payment_details = []
-    for payment in payments:
-        date = payment.date.isoformat() if payment.date else None
-        subscription_end_date = payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
-        payment_details.append({
-            "id_payments": payment.id_payments,
-            "payment_method": payment.payment_method,
-            "amount": payment.amount,
-            "date": date,
-            "user_id": payment.user_id,
-            "plan": payment.plan.value if payment.plan else None,
-            "stripe_payment_intent_id": payment.stripe_payment_intent_id,
-            "stripe_customer_id": payment.stripe_customer_id,
-            "subscription_id": payment.subscription_id,
-            "status": payment.status.value if payment.status else None,
-            "checkout_session_id": payment.checkout_session_id,
-            "email": payment.email,
-            "subscription_end_date": subscription_end_date
-        })
+    return payments
 
-    return payment_details
+# Sincronización de mesas
+def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: float):
+    plan_mesas = {
+        PlanType.BASICO.value: 1,
+        PlanType.PROFESIONAL.value: 16,
+        PlanType.EMPRESARIAL.value: 26,
+        PlanType.BASICO_IMPRESORA.value: 1,
+        PlanType.RESTAURANTE_IMPRESORA.value: 16,
+        PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
+    }
+    mesas_permitidas = plan_mesas.get(plan, 0)
+    if mesas_permitidas == 0:
+        raise HTTPException(status_code=400, detail="Plan no reconocido")
 
+    amount_mapping = {
+        100.0: SubscriptionAmount.PLAN_100,
+        200.0: SubscriptionAmount.PLAN_200,
+        300.0: SubscriptionAmount.PLAN_300,
+        1960.0: SubscriptionAmount.BASICO_IMPRESORA,
+        2920.0: SubscriptionAmount.RESTAURANTE_IMPRESORA,
+        3880.0: SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA
+    }
+    try:
+        subscription_amount_enum = amount_mapping.get(float(amount))
+        if not subscription_amount_enum:
+            raise ValueError(f"Monto {amount} no reconocido en amount_mapping")
+        subscription_amount = subscription_amount_enum.value
+        print(f"Subscription amount mapped to: {subscription_amount}")
+    except (ValueError, TypeTypeError) as e:
+        print(f"Error al mapear monto a SubscriptionAmount: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Monto {amount} no válido para SubscriptionAmount")
+
+    try:
+        mesas_actuales_details = db.query(TableDetails).filter(TableDetails.user_id == user_id).order_by(TableDetails.table_number).all()
+        total_actuales_details = len(mesas_actuales_details)
+
+        mesas_actuales_tables = db.query(Tables).filter(Tables.user_id == user_id).order_by(Tables.number).all()
+        total_actuales_tables = len(mesas_actuales_tables)
+
+        if total_actuales_details > mesas_permitidas:
+            mesas_a_eliminar = mesas_actuales_details[mesas_permitidas:]
+            for mesa in mesas_a_eliminar:
+                db.delete(mesa)
+            print(f"Se eliminaron {len(mesas_a_eliminar)} mesas sobrantes en TableDetails.")
+
+        if total_actuales_tables > mesas_permitidas:
+            mesas_a_eliminar = mesas_actuales_tables[mesas_permitidas:]
+            for mesa in mesas_a_eliminar:
+                db.delete(mesa)
+            print(f"Se eliminaron {len(mesas_a_eliminar)} mesas sobrantes en Tables.")
+
+        if total_actuales_details < mesas_permitidas:
+            nuevas_mesas = []
+            for i in range(total_actuales_details + 1, mesas_permitidas + 1):
+                nuevas_mesas.append(
+                    TableDetails(
+                        user_id=user_id,
+                        table_number=i,
+                        estado=TablesEnum.Libre,
+                        cantidad_ventas_por_mesa=0.0
+                    )
+                )
+            db.add_all(nuevas_mesas)
+            print(f"Se agregaron {len(nuevas_mesas)} nuevas mesas en TableDetails.")
+
+        if total_actuales_tables < mesas_permitidas:
+            nuevas_mesas = []
+            for i in range(total_actuales_tables + 1, mesas_permitidas + 1):
+                nuevas_mesas.append(
+                    Tables(
+                        number=i,
+                        capacity=4,
+                        state=TablesEnum.Libre,
+                        user_id=user_id,
+                        subscription_amount=subscription_amount
+                    )
+                )
+            db.add_all(nuevas_mesas)
+            print(f"Se agregaron {len(nuevas_mesas)} nuevas mesas en Tables.")
+
+        db.commit()
+        print(f"Sincronización completada: {mesas_permitidas} mesas para el usuario {user_id}")
+        return {"message": f"Se han sincronizado {mesas_permitidas} mesas para el usuario", "mesas": mesas_permitidas}
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error al sincronizar mesas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al sincronizar mesas: {str(e)}")

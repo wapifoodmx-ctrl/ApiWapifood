@@ -226,9 +226,12 @@ def get_tables_status(
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
 
     subscription_mesas = {
-        100: 1,
-        200: 16,
-        300: 26
+        100.00: 1,
+        200.00: 16,
+        300.00: 26,
+        1960.00: 1,
+        2920.00: 16,
+        3880.00: 26
     }
     max_mesas = subscription_mesas.get(payment.amount, 0)
     if max_mesas == 0:

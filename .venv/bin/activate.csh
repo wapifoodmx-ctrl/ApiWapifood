@@ -9,11 +9,7 @@ alias deactivate 'test $?_OLD_VIRTUAL_PATH != 0 && setenv PATH "$_OLD_VIRTUAL_PA
 # Unset irrelevant variables.
 deactivate nondestructive
 
-<<<<<<< HEAD
-setenv VIRTUAL_ENV /home/hugo/Escritorio/FastApi/.venv
-=======
-setenv VIRTUAL_ENV /home/soportec/Desktop/FastApi_Comanda/.venv
->>>>>>> 9650695a41aeda04d243d384fdeb85c32620f000
+setenv VIRTUAL_ENV /home/hugo/Escritorio/api_comanda_mercadopago/FastApi_mercadopago/.venv
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"

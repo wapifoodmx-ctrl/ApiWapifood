@@ -19,7 +19,7 @@ router = APIRouter(
 
 # Cargar variables de entorno
 load_dotenv()
-BASE_URL = os.getenv("BASE_URL", "https://comandapp-api.h-dev.xyz")
+BASE_URL = os.getenv("BASE_URL", "https://api.wapifood.com")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
