@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, status
 import uvicorn
 from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics #restaurante
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 from starlette.datastructures import FormData
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 # Lista de clientes WebSocket con user_id
@@ -24,8 +25,9 @@ websocket_clients: List[Dict[str, WebSocket | int]] = []
 #put para actualizar datos
 #delete para eliminar datos
 app = FastAPI() 
+security = HTTPBasic()
 app.include_router(user.router)
-app.include_router(solicitarOTP.router)
+#app.include_router(solicitarOTP.router)
 #app.include_router(restaurante.router)
 app.include_router(auth.router)
 # Incluir los routers con prefijos específicos
@@ -35,6 +37,17 @@ app.include_router(orders.router)
 app.include_router(analytics.router)
 app.include_router(tables.router)
 app.include_router(payments.router)
+
+
+#--------------------------------------
+# SECURIDAD EN LA DOCUMEN TACION  # 
+
+
+
+
+
+#--------------------------------------
+#--------------------------------------
 
 
 # Montar el directorio de archivos estáticos

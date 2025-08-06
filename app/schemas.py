@@ -90,6 +90,7 @@ class UserInfo(BaseModel):
     nombre_restaurante: Optional[str] = None  # Nombre del restaurante asociado
     user_id: int | None = None  # Clave foránea que conecta con User
     user_uuid: Optional[str] = None  # UUID del usuario (opcional)
+    codigo_confirmacion: Optional[str] = None  # Añadir este campo
 
     class Config:
         from_attributes = True  # Para compatibilidad con SQLAlchemy
@@ -188,6 +189,16 @@ class OrdersResponse(BaseModel):
         from_attributes = True
 
 
+
+
+
+
+# class ConfirmationCodeResponse(BaseModel):
+#     code: str
+
+#     class Config:
+#         from_attributes = True
+
 #esquema de las mesas donde tenemos state que es una enumeracion
 #la cual nos permite identificar si la mesa esta libre u ocupada
 #se inserta el id de la mesa, el numero y la capacidad
@@ -222,6 +233,7 @@ class OrderDetailsByUUIDResponse(BaseModel):
     products: List[OrderDetailItem]
     total: Decimal
     metodo_pago: PaymentMethodEnum
+    ticket_number: Optional[int] = None  # Nuevo campo para ticket_number
 
     class Config:
         from_attributes = True
@@ -276,6 +288,7 @@ class Products(BaseModel):
     category_id: int | None = None  # Cambié a int | None
     status: StatusEnum | None = None
     image_url: List[str] = []
+    production_cost: Optional[Decimal] = None  # Nuevo campo para costo de producción
     nombre_categoria: Optional[str] = None  # Agregar el campo calculado
 
 
@@ -394,6 +407,11 @@ class UserInfoCreate(BaseModel):
     nombre_restaurante: str | None = None  # Nombre del restaurante asociado
     user_id: Optional[int] = None
     user_uuid: Optional[str] = None  # Correcto como str
+    whatsapp: Optional[str] = None  # Nuevo campo para WhatsApp
+    horario: Optional[str] = None
+    image_user: Optional[ImageUserCreate] = None  # Nuevo campo para la imagen del usuario
+    # Nuevo campo para el código de confirmación
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -414,12 +432,17 @@ class UserInfoResponse(BaseModel):
     user_id: int | None = None
     user_uuid: Optional[str] = None  # Correctamente definido como str
     image_user: Optional[ImageUserResponse] = None
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         orm_mode = True  # Nota: orm_mode es para Pydantic V1; en V2 es from_attributes
 
 
 class UserWithInfo(BaseModel):
+    id_users: int
+    name: str
+    email: Optional[str] = None
+    rol: RoleEnum
     user_info: Optional[UserInfoResponse] = None  # Cambiado de UserInfo a UserInfoResponse
 
     class Config:
@@ -436,6 +459,7 @@ class UserInfoByUUIDResponse(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
+    codigo_confirmacion: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -556,6 +580,7 @@ class ProductUpdateSchema(BaseModel):
     price: Optional[float] = None
     status: Optional[str] = None
     category_id: Optional[int] = None
+    production_cost: Optional[Decimal] = None  # Nuevo campo para costo de producción
 
 
 
@@ -615,7 +640,27 @@ class OrderFinalizeResponse(BaseModel):
     order_status: OrderStatusEnum
     mesa_state: TablesEnum
     metodo_pago: PaymentMethodEnum | None = None  # Nuevo campo para metodo_pago
+    ticket_number: Optional[int] = None  # Nuevo campo para ticket_number
 
+
+    class Config:
+        from_attributes = True
+
+
+# Esquema mínimo para la respuesta
+class ConfirmationCodeResponse(BaseModel):
+    codigo_confirmacion: Optional[str]
+
+
+#esquema respuesta utilidadesss
+class UtilidadesResponse(BaseModel):
+    product_id: int
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    costo_producion: Decimal  # Nota: hay un typo aquí, debería ser "costo_produccion"
+    Venta_total: Decimal
+    utilidades: Decimal
 
     class Config:
         from_attributes = True

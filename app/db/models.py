@@ -146,6 +146,7 @@ class UserInfo(Base):
     nombre_restaurante = Column(String(50), nullable=True)
     whatsapp = Column(String(50), nullable=True)  # Nuevo campo para WhatsApp
     horario = Column(String(50), nullable=True)  # Nuevo campo para horario
+    codigo_confirmacion = Column(String(4), nullable=True)  # Nueva columna
 
     # Relaciones
     # Clave foránea a la tabla 'users'
@@ -176,6 +177,9 @@ class Orders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
     order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
+    ticket_number = Column(Integer, nullable=True)  # Cambiado a Integer
+
+    #codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
     # Relaciones
     user = relationship("User", back_populates="orders") #
     #details = relationship("OrdersDetails", back_populates="order")
@@ -184,6 +188,10 @@ class Orders(Base):
     table = relationship("Tables", back_populates="orders")
     order_details = relationship("OrdersDetails", back_populates="order")
     
+class UserConfirmationCode(Base):
+    __tablename__ = "user_confirmation_codes"
+    user_id = Column(Integer, ForeignKey("users.id_users"), primary_key=True)
+    codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')
 
 class Tables(Base):
     __tablename__ = "tables"
@@ -221,6 +229,7 @@ class Products(Base):
     name = Column(String(1500))
     description = Column(String(500))
     price = Column(Decimal(10, 2))
+    production_cost = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
     owner_id = Column(Integer, ForeignKey("users.id_users"))  # Nueva columna
     status = Column(SQLAlchemyEnum(StatusEnum), nullable=False, default=StatusEnum.activo)
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea
@@ -248,7 +257,10 @@ class OrdersDetails(Base):
     quantity = Column(Integer)
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
-    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus
+    order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus 
+    #costo_producion = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
+    utilidades = Column(Decimal(10, 2), nullable=True)  # Nueva columna para utilidades
+    
     # Relaciones
       # Relaciones
     order = relationship("Orders", back_populates="order_details")
@@ -267,7 +279,8 @@ class Payments(Base):
     stripe_payment_intent_id = Column(String(255), nullable  = True) #    id de pago de Stripe
     stripe_customer_id = Column(String(255), nullable=True)  # Nuevo campo para el cliente de Stripe
     subscription_id = Column(String(255), nullable=True)  # Nuevo campo para el ID de la suscripción
-    plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
+    #plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
+    plan = Column(SQLAlchemyEnum(PlanType, values_callable=lambda x: [e.value for e in x]), nullable=False)  # Nuevo campo para el plan, con valores de Enum
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
     checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
     email = Column(String(255), nullable=True)

@@ -33,7 +33,11 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
+<<<<<<< HEAD
 set -gx VIRTUAL_ENV /home/hugo/Escritorio/FastApi/.venv
+=======
+set -gx VIRTUAL_ENV /home/soportec/Desktop/FastApi_Comanda/.venv
+>>>>>>> 9650695a41aeda04d243d384fdeb85c32620f000
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

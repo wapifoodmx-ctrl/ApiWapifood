@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 #!/home/hugo/Escritorio/FastApi/.venv/bin/python3
+=======
+#!/home/soportec/Desktop/FastApi_Comanda/.venv/bin/python3
+>>>>>>> 9650695a41aeda04d243d384fdeb85c32620f000
 # -*- coding: utf-8 -*-
 import re
 import sys

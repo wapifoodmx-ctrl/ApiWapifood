@@ -153,7 +153,8 @@ def obtenemos_productos(
             "category_id": producto.category_id,
             "status": producto.status,
             "image_url": image_urls,  # Usar URLs completas
-            "nombre_categoria": producto.nombre_categoria
+            "nombre_categoria": producto.nombre_categoria,
+            "production_cost": producto.production_cost  # Nuevo campo para costo de producción
         }
         productos_dicts.append(producto_dict)
 
@@ -308,6 +309,7 @@ async def crear_producto_owner_image(
     price: float = Form(...),
     category_id: int = Form(...),
     file: UploadFile = File(None),
+    production_cost: Optional[float] = Form(None),  # Nuevo campo opcional para costo de producción
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
@@ -322,6 +324,7 @@ async def crear_producto_owner_image(
         price=price,
         status="activo",
         category_id=category_id,
+        production_cost=production_cost,  # Asignar el costo de producción si se proporciona
         owner_id=current_user.id_users
     )
     db.add(db_product)
@@ -365,6 +368,8 @@ async def crear_producto_owner_image(
 
     return ProductsSchema.from_orm(db_product)
 
+#-----------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------
 
 
 
@@ -415,7 +420,8 @@ async def actualizar_producto(
             "description": db_product.description,
             "price": db_product.price,
             "status": db_product.status,
-            "category_id": db_product.category_id
+            "category_id": db_product.category_id,
+            "production_cost": db_product.production_cost  # Nuevo campo para costo de producción
         }
         print(f"Valores originales del producto: {original_values}")
 
@@ -428,6 +434,17 @@ async def actualizar_producto(
         if product_update.description is not None:
             updated_fields.append(f"description={product_update.description}")
             db_product.description = product_update.description
+
+        if product_update.production_cost is not None:
+            if product_update.production_cost < 0:  # Validación opcional para evitar costos negativos
+                raise HTTPException(
+            status_code=400,
+            detail="El costo de producción no puede ser negativo"
+                )
+            updated_fields.append(f"production_cost={product_update.production_cost}")
+            db_product.production_cost = product_update.production_cost
+
+
         if product_update.price is not None:
             updated_fields.append(f"price={product_update.price}")
             db_product.price = product_update.price
@@ -524,7 +541,8 @@ async def actualizar_producto(
             "description": db_product.description,
             "price": db_product.price,
             "status": db_product.status,
-            "category_id": db_product.category_id
+            "category_id": db_product.category_id, 
+            "production_cost": db_product.production_cost  # Nuevo campo para costo de producción
         }
         print(f"Valores después de la actualización: {updated_values}")
 
