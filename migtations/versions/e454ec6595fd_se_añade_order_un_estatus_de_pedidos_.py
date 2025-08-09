@@ -19,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
-    op.add_column('orders', sa.Column('order_status', sa.Enum('Pendiente', 'EnCocina', 'Preparado', 'Cancelado', 'Completado', name='orderstatusenum'), nullable=False, server_default='Pendiente'))
+    """Upgrade schema."""
+    #op.add_column('orders', sa.Column('order_status', sa.Enum('Pendiente', 'EnCocina', 'Preparado', 'Cancelado', 'Completado', name='orderstatusenum'), nullable=False, server_default='Pendiente'))
 
 def downgrade():
+    """Downgrade schema."""
     op.drop_column('orders', 'order_status')

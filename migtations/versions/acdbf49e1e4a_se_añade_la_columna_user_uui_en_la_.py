@@ -22,7 +22,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
     # Agrega la columna user_uuid a la tabla user_info
-    op.add_column('user_info', sa.Column('user_uuid', sa.Integer(), nullable=False, unique=True))
+    #op.add_column('user_info', sa.Column('user_uuid', sa.Integer(), nullable=False, unique=True))
     # Si necesitas el constraint único explícitamente (algunos backends lo requieren)
     # op.create_unique_constraint('uq_userinfo_user_uuid', 'user_info', ['user_uuid'])
 

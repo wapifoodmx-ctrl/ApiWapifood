@@ -19,10 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
+    """Upgrade schema."""
     # Añadir la columna 'production_cost' a la tabla 'products'
-    op.add_column('products', 
-                  sa.Column('production_cost', sa.DECIMAL(10, 2), nullable=False, server_default='0.00'))
+    # op.add_column('products', 
+    #               sa.Column('production_cost', sa.DECIMAL(10, 2), nullable=False, server_default='0.00'))
 
 def downgrade():
+    """Downgrade schema."""
     # Eliminar la columna 'production_cost'
     op.drop_column('products', 'production_cost')

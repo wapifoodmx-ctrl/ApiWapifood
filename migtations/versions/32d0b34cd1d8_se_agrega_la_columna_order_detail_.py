@@ -18,17 +18,19 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade():
+    """Upgrade schema."""
     # Agregar la columna order_detail_status a la tabla orders_details
-    op.add_column(
-        'orders_details',
-        sa.Column(
-            'order_detail_status',
-            sa.Enum('Pendiente', 'EnCocina', 'Preparado', 'Cancelado', 'Completado', 'Finalizado', name='orderstatusenum'),
-            nullable=False,
-            server_default='Pendiente'
-        )
-    )
+    # op.add_column(
+    #     'orders_details',
+    #     sa.Column(
+    #         'order_detail_status',
+    #         sa.Enum('Pendiente', 'EnCocina', 'Preparado', 'Cancelado', 'Completado', 'Finalizado', name='orderstatusenum'),
+    #         nullable=False,
+    #         server_default='Pendiente'
+    #     )
+    # )
 
 def downgrade():
+    """Downgrade schema."""
     # Eliminar la columna order_detail_status
     op.drop_column('orders_details', 'order_detail_status')

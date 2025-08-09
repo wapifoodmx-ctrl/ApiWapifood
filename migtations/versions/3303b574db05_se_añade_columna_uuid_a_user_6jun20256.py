@@ -19,11 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
+    """Upgrade schema."""
     # Añadir la columna uuid como String(36)
-    op.add_column('users', sa.Column('uuid', sa.String(36), nullable=False))
-    # Opcional: Poblar la columna con valores únicos
-    op.execute("UPDATE users SET uuid = UUID()")
+    # op.add_column('users', sa.Column('uuid', sa.String(36), nullable=False))
+    # # Opcional: Poblar la columna con valores únicos
+    # op.execute("UPDATE users SET uuid = UUID()")
 
 def downgrade():
+    """Downgrade schema."""
     # Eliminar la columna uuid
     op.drop_column('users', 'uuid')

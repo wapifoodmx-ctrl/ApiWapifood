@@ -224,7 +224,7 @@ class OrderDetailItem(BaseModel):
 
 class OrderDetailsByUUIDResponse(BaseModel):
     id_orders: int | None = None
-    mesa_number: int 
+    mesa_number: Optional[Union[str, int]]
     restaurant_name: str
     order_uuid: str
     date_time: datetime
@@ -560,7 +560,7 @@ class OrderDetailResponse(BaseModel):
 class OrdersResponse(BaseModel):
     id_orders: int
     #mesa_id: int
-    mesa_number: int
+    mesa_number: Optional[int] = None
     state: RoleOrders  # Cambiado de str a RoleOrders
     order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
@@ -620,9 +620,15 @@ class PaymentResponse(BaseModel):
     stripe_customer_id: Optional[str] = None
     subscription_id: Optional[str] = None
     checkout_session_id: str | None
+    mercado_pago_customer_id: str | None = None
+    mercado_pago_payment_id: str | None = None
+    mercado_pago_preapproval_id: str | None = None
+    checkout_url: str | None = None  # Nuevo campo para el enlace
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+   
 
 class PaymentRequest(BaseModel):
     items: List[Item]
@@ -631,7 +637,11 @@ class PaymentRequest(BaseModel):
 # Esquema para la solicitud de pago
 class SubscriptionRequest(BaseModel):
     plan: PlanType
+    card_token: Optional[str] = None
     #order_id: str
+
+    class Config:
+        from_attributes = True
 
 
 class OrderFinalizeResponse(BaseModel):

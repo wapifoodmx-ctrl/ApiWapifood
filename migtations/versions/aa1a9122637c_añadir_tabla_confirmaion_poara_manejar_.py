@@ -19,11 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
-    op.create_table(
-        'user_confirmation_codes',
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id_users'), primary_key=True),
-        sa.Column('codigo_confirmacion', sa.String(length=4), nullable=False, server_default='0001')
-    )
+    """Upgrade schema."""
+    # op.create_table(
+    #     'user_confirmation_codes',
+    #     sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id_users'), primary_key=True),
+    #     sa.Column('codigo_confirmacion', sa.String(length=4), nullable=False, server_default='0001')
+    # )
 
 def downgrade():
+    """Downgrade schema."""
     op.drop_table('user_confirmation_codes')

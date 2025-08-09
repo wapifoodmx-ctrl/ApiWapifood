@@ -19,14 +19,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    """Upgrade schema."""
     # Eliminar columna 'apellido' de la tabla 'userinfo'
-    op.drop_column('user_info', 'apellido')
+    # op.drop_column('user_info', 'apellido')
 
-    # Agregar columna 'whatsapp' a la tabla 'userinfo'
-    op.add_column('user_info', sa.Column('whatsapp', sa.String(length=50), nullable=True))
+    # # Agregar columna 'whatsapp' a la tabla 'userinfo'
+    # op.add_column('user_info', sa.Column('whatsapp', sa.String(length=50), nullable=True))
 
 
 def downgrade() -> None:
+    """Downgrade schema."""
     # Revertir: agregar columna 'apellido'
     op.add_column('user_info', sa.Column('apellido', sa.String(length=50), nullable=True))
 

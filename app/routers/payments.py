@@ -10,12 +10,12 @@ from app.db.database import get_db
 from app.db.models import Payments, User, TableDetails, Tables
 from app.enums import PlanType, PaymentStatus
 from app.repository.auth import get_current_user
-from app.schemas import SubscriptionRequest
+from app.schemas import SubscriptionRequest, PaymentResponse
 from typing import List
 from app.enums import TablesEnum
 from app.db.models import Tables as TablesModel, TableDetails, Payments
-from app.enums import TablesEnum, SubscriptionAmount
-from mercadopago import SDK 
+from app.enums import TablesEnum, SubscriptionAmount, PaymentMethodEnum
+from decimal import Decimal
 import mercadopago
 
 load_dotenv()
@@ -27,12 +27,18 @@ load_dotenv()
 
 
 # Configura Mercado Pago
-mercado_pago_sdk = mercadopago.SDK(os.getenv("MERCADO_PAGO_ACCESS_TOKEN"))
-mercado_pago_public_key = os.getenv("MERCADO_PAGO_PUBLIC_KEY")
-mercado_pago_webhook_secret = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
+# Configurar Mercado Pago SDK
+MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
+MERCADO_PAGO_PUBLIC_KEY = os.getenv("MERCADO_PAGO_PUBLIC_KEY")
+YOUR_DOMAIN = os.getenv("YOUR_DOMAIN", "https://ac9173dd0bcd.ngrok-free.app")
+#YOUR_DOMAIN = os.getenv("YOUR_DOMAIN", "http://127.0.0.1:8000")
+#mercado_pago_webhook_secret = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
-if not mercado_pago_sdk.access_token or not mercado_pago_public_key:
-    raise ValueError("No se encontraron las credenciales de Mercado Pago en las variables de entorno")
+if not MERCADO_PAGO_ACCESS_TOKEN:
+      raise ValueError("MERCADO_PAGO_ACCESS_TOKEN no está configurado")
+if not MERCADO_PAGO_PUBLIC_KEY:
+      raise ValueError("MERCADO_PAGO_PUBLIC_KEY no está configurado")
+
 
 
 router = APIRouter(
@@ -40,7 +46,7 @@ router = APIRouter(
     tags=["payments"]
 )
 
-YOUR_DOMAIN = "http://127.0.0.1:8000"
+#YOUR_DOMAIN = "http://127.0.0.1:8000"
 
 # PLAN_PRICES = {
 #     PlanType.BASICO: "price_1RMGJPAcLh3gfk7AeZCmoNOs" ,        #"prod_SGk7H4kqVBUvtP", # Reemplaza con el ID real del precio de Stripe
@@ -51,45 +57,6 @@ YOUR_DOMAIN = "http://127.0.0.1:8000"
 #     PlanType.PLUS_RESTAURANTE_IMPRESORA: "price_1RmKv3AcLh3gfk7A1ZGDGx90"
 # }
 
-# Mapa de precios para los planes
-PLAN_PRICES = {
-    PlanType.BASICO: {
-        "amount": 100.0,
-        "currency": "MXN",  # Ajusta según tu país (MXN, ARS, etc.)
-        "description": "Plan Básico",
-        "plan_id": None  # Se llenará dinámicamente
-    },
-    PlanType.PROFESIONAL: {
-        "amount": 200.0,
-        "currency": "MXN",
-        "description": "Plan Profesional",
-        "plan_id": None
-    },
-    PlanType.EMPRESARIAL: {
-        "amount": 300.0,
-        "currency": "MXN",
-        "description": "Plan Empresarial",
-        "plan_id": None
-    },
-    PlanType.BASICO_IMPRESORA: {
-        "amount": 1960.0,
-        "currency": "MXN",
-        "description": "Plan Básico con Impresora",
-        "plan_id": None
-    },
-    PlanType.RESTAURANTE_IMPRESORA: {
-        "amount": 2920.0,
-        "currency": "MXN",
-        "description": "Plan Restaurante con Impresora",
-        "plan_id": None
-    },
-    PlanType.PLUS_RESTAURANTE_IMPRESORA: {
-        "amount": 3880.0,
-        "currency": "MXN",
-        "description": "Plan Plus Restaurante con Impresora",
-        "plan_id": None
-    }
-}
 
 #/ plan basico impresora : price_1RmKjEAcLh3gfk7AErXZJ3I1
 #/ plan restaurante impresora : price_1RmKqcAcLh3gfk7ACUUqKfrK
@@ -97,44 +64,47 @@ PLAN_PRICES = {
 
 #------------------------------------------
 #----------------------------------price_1RMGJPAcLh3gfk7AeZCmoNOs es el id_del precio 
+# Crear planes de suscripción al iniciar la aplicación
 
 # Crear planes de suscripción al iniciar la aplicación
-def create_mercado_pago_plans():
-    for plan, details in PLAN_PRICES.items():
-        try:
-            response = mercado_pago_sdk.preapproval_plan().search(filters={"reason": details["description"]})
-            existing_plans = response["response"]["results"]
-            
-            if existing_plans:
-                print(f"Plan {details['description']} ya existe: {existing_plans[0]['id']}")
-                PLAN_PRICES[plan]["plan_id"] = existing_plans[0]["id"]
-            else:
-                plan_data = {
-                    "reason": details["description"],
-                    "auto_recurring": {
-                        "frequency": 1,
-                        "frequency_type": "months" if plan in [PlanType.BASICO, PlanType.PROFESIONAL, PlanType.EMPRESARIAL] else "years",
-                        "transaction_amount": float(details["amount"]),
-                        "currency_id": details["currency"]
-                    },
-                    "back_url": f"{YOUR_DOMAIN}/payments/success",
-                    "external_reference": f"plan_{plan.value}"
-                }
-                response = mercado_pago_sdk.preapproval_plan().create(plan_data)
-                PLAN_PRICES[plan]["plan_id"] = response["response"]["id"]
-                print(f"Plan creado: {details['description']} - ID: {response['response']['id']}")
-        except Exception as e:
-            print(f"Error al crear/verificar plan {plan}: {str(e)}")
-            raise ValueError(f"Error al crear/verificar plan {plan}: {str(e)}")
 
-create_mercado_pago_plans()
+mercado_pago_sdk = mercadopago.SDK(MERCADO_PAGO_ACCESS_TOKEN)
 
-# Actualizar SubscriptionRequest
-class SubscriptionRequest(BaseModel):
-    plan: PlanType
-    card_token: str  # Token de la tarjeta generado por el SDK de Mercado Pago
+# Mapa de precios para los planes
+PLAN_PRICES = {
+    PlanType.BASICO: {
+        "amount": 100.0,
+        "currency": "MXN",
+        "description": "Plan Básico"
+    },
+    PlanType.PROFESIONAL: {
+        "amount": 200.0,
+        "currency": "MXN",
+        "description": "Plan Profesional"
+    },
+    PlanType.EMPRESARIAL: {
+        "amount": 300.0,
+        "currency": "MXN",
+        "description": "Plan Empresarial"
+    },
+    PlanType.BASICO_IMPRESORA: {
+        "amount": 1960.0,
+        "currency": "MXN",
+        "description": "Plan Básico con Impresora"
+    },
+    PlanType.RESTAURANTE_IMPRESORA: {
+        "amount": 2920.0,
+        "currency": "MXN",
+        "description": "Plan Restaurante con Impresora"
+    },
+    PlanType.PLUS_RESTAURANTE_IMPRESORA: {
+        "amount": 3880.0,
+        "currency": "MXN",
+        "description": "Plan Plus Restaurante con Impresora"
+    }
+}
 
-# Crear sesión de checkout
+
 @router.post("/create-checkout-session")
 async def create_checkout_session(
     subscription_request: SubscriptionRequest,
@@ -143,35 +113,41 @@ async def create_checkout_session(
 ):
     try:
         plan_details = PLAN_PRICES.get(subscription_request.plan)
-        if not plan_details or not plan_details.get("plan_id"):
-            raise HTTPException(status_code=400, detail="Plan no válido o no configurado")
+        if not plan_details:
+            raise HTTPException(status_code=400, detail="Plan no válido")
 
-        # Crear cliente en Mercado Pago
-        customer_data = {
-            "email": current_user.email,
-            "identification": {"type": "DNI", "number": "12345678"}  # Ajusta según tu caso
-        }
-        customer_response = mercado_pago_sdk.customer().create(customer_data)
-        mercado_pago_customer_id = customer_response["response"]["id"]
-
-        # Crear suscripción
-        subscription_data = {
-            "preapproval_plan_id": plan_details["plan_id"],
-            "reason": plan_details["description"],
-            "payer_email": current_user.email,
-            "card_token": subscription_request.card_token,
+        # Crear preferencia de pago único
+        preference_data = {
+            "items": [
+                {
+                    "title": plan_details["description"],
+                    "quantity": 1,
+                    "unit_price": float(plan_details["amount"]),
+                    "currency_id": "MXN"
+                }
+            ],
+            "payer": {
+                "email": current_user.email
+            },
+            "back_urls": {
+                "success": f"{YOUR_DOMAIN}/payments/success",
+                "failure": f"{YOUR_DOMAIN}/payments/cancel",
+                "pending": f"{YOUR_DOMAIN}/payments/cancel"
+            },
+            "auto_return": "approved",
             "external_reference": f"user_{current_user.id_users}",
-            "back_url": f"{YOUR_DOMAIN}/payments/success?session_id={{CHECKOUT_SESSION_ID}}",
-            "auto_recurring": {
-                "frequency": 1,
-                "frequency_type": "months" if subscription_request.plan in [PlanType.BASICO, PlanType.PROFESIONAL, PlanType.EMPRESARIAL] else "years",
-                "transaction_amount": float(plan_details["amount"]),
-                "currency_id": plan_details["currency"]
-            }
+            "payment_methods": {
+                "installments": 1
+            },
+            "notification_url": f"{YOUR_DOMAIN}/payments/webhook"  # Agregar el webhook
         }
 
-        subscription_response = mercado_pago_sdk.preapproval().create(subscription_data)
-        subscription = subscription_response["response"]
+        preference_response = mercado_pago_sdk.preference().create(preference_data)
+        print(f"Respuesta de creación de preferencia: {preference_response['response']}")
+        preference = preference_response["response"]
+        preference_id = preference.get("id")
+        if not preference_id:
+            raise ValueError("No se encontró 'id' en la respuesta de creación de preferencia")
 
         # Calcular fecha de expiración
         current_date = datetime.utcnow()
@@ -184,59 +160,81 @@ async def create_checkout_session(
         # Guardar pago
         payment = Payments(
             payment_method=PaymentMethodEnum.pasarela,
-            amount=plan_details["amount"],
+            amount=Decimal(plan_details["amount"]),
             date=datetime.utcnow(),
             subscription_end_date=subscription_end_date,
             user_id=current_user.id_users,
-            mercado_pago_customer_id=mercado_pago_customer_id,
-            mercado_pago_preapproval_id=subscription["id"],
-            subscription_id=subscription["id"],
-            checkout_session_id=subscription["id"],
+            mercado_pago_preference_id=preference_id,  # Usar un campo específico para preference_id
             plan=subscription_request.plan,
             status=PaymentStatus.PENDING,
-            email=current_user.email
+            email=current_user.email,
+            checkout_url=preference.get("init_point")
         )
         db.add(payment)
         db.commit()
         db.refresh(payment)
-        print(f"Pago guardado: ID={payment.id_payments}, Preapproval ID={payment.mercado_pago_preapproval_id}")
+        print(f"Pago guardado: ID={payment.id_payments}, Preference ID={payment.mercado_pago_preference_id}, URL={payment.checkout_url}")
 
         return JSONResponse(
             status_code=200,
-            content={"checkout_url": subscription["init_point"]}
+            content={
+                "checkout_url": preference.get("init_point"),
+                "payment_id": payment.id_payments,
+                "message": "Enlace de pago generado con éxito"
+            }
         )
 
     except Exception as e:
-        print(f"Error al crear suscripción: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error al crear suscripción: {str(e)}")
+        print(f"Error al crear pago: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al crear pago: {str(e)}")
+    
 
-# Webhook
+
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     try:
-        payload = await request.json()
-        event_type = payload.get("type")
+        # Obtener el cuerpo crudo para depuración
+        body = await request.body()
+        print(f"Webhook recibido - Cuerpo crudo: {body}")
+
+        try:
+            payload = await request.json()
+        except ValueError as e:
+            print(f"Error al parsear JSON: {str(e)}")
+            return {"status": "ignored", "message": "Cuerpo de solicitud inválido o vacío"}
+
+        topic = payload.get("topic")
         data = payload.get("data", {})
+        print(f"Webhook recibido - Topic: {topic}, Datos: {data}")
 
-        print(f"Webhook recibido - Tipo: {event_type}, Datos: {data}")
-
-        if event_type == "payment":
+        if topic == "payment":
             payment_id = data.get("id")
+            print(f"Payment ID: {payment_id}")
             if not payment_id:
-                print("No payment_id in event")
+                print("No se encontró payment_id en el evento")
                 return {"status": "ignored", "message": "No payment_id in event"}
 
             payment_response = mercado_pago_sdk.payment().get(payment_id)
+            print(f"Respuesta de obtención de pago: {payment_response['response']}")
             payment_data = payment_response["response"]
 
-            preapproval_id = payment_data.get("preapproval_id")
-            if not preapproval_id:
-                print("No preapproval_id in payment")
-                return {"status": "ignored", "message": "No preapproval_id in payment"}
+            # Intentar obtener el preference_id desde el merchant_order
+            merchant_order_id = payment_data.get("order", {}).get("id")
+            preference_id = None
+            if merchant_order_id:
+                merchant_order_response = mercado_pago_sdk.merchant_order().get(merchant_order_id)
+                print(f"Respuesta de merchant_order: {merchant_order_response['response']}")
+                merchant_order_data = merchant_order_response["response"]
+                preference_id = merchant_order_data.get("preference_id")
+                print(f"Preference ID desde merchant_order: {preference_id}")
 
-            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
+            if not preference_id:
+                print("No se encontró preference_id en el pago o merchant_order")
+                return {"status": "ignored", "message": "No preference_id in payment or merchant_order"}
+
+            payment = db.query(Payments).filter(Payments.mercado_pago_preference_id == preference_id).first()
             if not payment:
-                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
+                print(f"Pago no encontrado para preference_id: {preference_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
             user = db.query(User).filter(User.id_users == payment.user_id).first()
@@ -245,8 +243,15 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
                 return {"status": "ignored", "message": "User not found"}
 
             payment.mercado_pago_payment_id = payment_id
-            payment.amount = payment_data.get("transaction_amount", payment.amount)
-            payment.status = PaymentStatus.COMPLETED if payment_data.get("status") == "approved" else PaymentStatus.FAILED
+            payment.amount = Decimal(payment_data.get("transaction_amount", payment.amount))
+            payment_status = payment_data.get("status")
+            if payment_status == "approved":
+                payment.status = PaymentStatus.COMPLETED
+            elif payment_status in ["rejected", "cancelled"]:
+                payment.status = PaymentStatus.FAILED
+            else:
+                payment.status = PaymentStatus.PENDING
+            print(f"Actualizando estado del pago a: {payment.status}")
             payment.email = user.email
 
             days_to_add = 365 if payment.plan in [
@@ -267,90 +272,95 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
 
             payment.subscription_end_date = subscription_end_date
             db.commit()
+            print("Base de datos actualizada correctamente")
             db.refresh(payment)
             print(f"Pago actualizado: {payment.__dict__}")
 
-            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, payment.amount)
+            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, float(payment.amount))
 
-        elif event_type == "preapproval":
-            preapproval_id = data.get("id")
-            preapproval_response = mercado_pago_sdk.preapproval().get(preapproval_id)
-            preapproval_data = preapproval_response["response"]
+        elif topic == "merchant_order":
+            merchant_order_id = data.get("id")
+            print(f"Merchant Order ID: {merchant_order_id}")
+            if not merchant_order_id:
+                print("No se encontró merchant_order_id en el evento")
+                return {"status": "ignored", "message": "No merchant_order_id in event"}
 
-            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
+            merchant_order_response = mercado_pago_sdk.merchant_order().get(merchant_order_id)
+            print(f"Respuesta de merchant_order: {merchant_order_response['response']}")
+            merchant_order_data = merchant_order_response["response"]
+            preference_id = merchant_order_data.get("preference_id")
+            print(f"Preference ID desde merchant_order: {preference_id}")
+
+            if not preference_id:
+                print("No se encontró preference_id en el merchant_order")
+                return {"status": "ignored", "message": "No preference_id in merchant_order"}
+
+            payment = db.query(Payments).filter(Payments.mercado_pago_preference_id == preference_id).first()
             if not payment:
-                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
+                print(f"Pago no encontrado para preference_id: {preference_id}")
                 return {"status": "ignored", "message": "Payment not found"}
 
-            user = db.query(User).filter(User.id_users == payment.user_id).first()
-            if not user:
-                print(f"Usuario no encontrado para user_id: {payment.user_id}")
-                return {"status": "ignored", "message": "User not found"}
+            payments = merchant_order_data.get("payments", [])
+            for payment_data in payments:
+                payment_id = payment_data.get("id")
+                payment_status = payment_data.get("status")
+                payment.mercado_pago_payment_id = payment_id
+                if payment_status == "approved":
+                    payment.status = PaymentStatus.COMPLETED
+                elif payment_status in ["rejected", "cancelled"]:
+                    payment.status = PaymentStatus.FAILED
+                else:
+                    payment.status = PaymentStatus.PENDING
+                print(f"Actualizando estado del pago a: {payment.status}")
 
-            payment.status = PaymentStatus.COMPLETED if preapproval_data.get("status") == "authorized" else PaymentStatus.FAILED
-            payment.email = user.email
+                days_to_add = 365 if payment.plan in [
+                    PlanType.BASICO_IMPRESORA,
+                    PlanType.RESTAURANTE_IMPRESORA,
+                    PlanType.PLUS_RESTAURANTE_IMPRESORA
+                ] else 30
+                try:
+                    if payment_data.get("date_approved"):
+                        start_date = datetime.strptime(payment_data["date_approved"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                        subscription_end_date = start_date + timedelta(days=days_to_add)
+                    else:
+                        subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+                    print(f"subscription_end_date: {subscription_end_date}")
+                except Exception as e:
+                    print(f"Error al calcular subscription_end_date: {str(e)}")
+                    subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
 
-            days_to_add = 365 if payment.plan in [
-                PlanType.BASICO_IMPRESORA,
-                PlanType.RESTAURANTE_IMPRESORA,
-                PlanType.PLUS_RESTAURANTE_IMPRESORA
-            ] else 30
-            if preapproval_data.get("next_payment_date"):
-                subscription_end_date = datetime.strptime(preapproval_data["next_payment_date"], "%Y-%m-%dT%H:%M:%S.%f%z")
                 payment.subscription_end_date = subscription_end_date
-            else:
-                payment.subscription_end_date = datetime.utcnow() + timedelta(days=days_to_add)
+                db.commit()
+                print("Base de datos actualizada correctamente")
+                db.refresh(payment)
+                print(f"Pago actualizado: {payment.__dict__}")
 
-            db.commit()
-            db.refresh(payment)
-            print(f"Suscripción actualizada: {payment.__dict__}")
-
-            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, payment.amount)
-
-        elif event_type == "preapproval.canceled":
-            preapproval_id = data.get("id")
-            payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == preapproval_id).first()
-            if not payment:
-                print(f"Pago no encontrado para preapproval_id: {preapproval_id}")
-                return {"status": "ignored", "message": "Payment not found"}
-
-            user = db.query(User).filter(User.id_users == payment.user_id).first()
-            if user:
-                payment.email = user.email
-
-            payment.status = PaymentStatus.FAILED
-            payment.subscription_end_date = None
-            db.commit()
-            db.refresh(payment)
-            print(f"Suscripción cancelada: {payment.__dict__}")
-
-            db.query(Tables).filter(Tables.user_id == payment.user_id).delete()
-            db.query(TableDetails).filter(TableDetails.user_id == payment.user_id).delete()
-            db.commit()
-            print(f"Se eliminaron todas las mesas para el usuario {payment.user_id}")
+                sync_tables_with_subscription(db, payment.user_id, payment.plan.value, float(payment.amount))
 
         else:
-            print(f"Evento no manejado: {event_type}")
-            return {"status": "ignored", "message": f"Event type {event_type} not handled"}
+            print(f"Evento no manejado: {topic}")
+            return {"status": "ignored", "message": f"Event topic {topic} not handled"}
 
         return {"status": "success"}
 
     except Exception as e:
         print(f"Error al procesar webhook: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al procesar el evento: {str(e)}")
+    
 
-# Endpoint de éxito
 @router.get("/success", status_code=status.HTTP_200_OK)
 async def payment_success(request: Request, db: Session = Depends(get_db)):
-    session_id = request.query_params.get("session_id")
-    if not session_id:
-        raise HTTPException(status_code=400, detail="Falta el ID de la sesión")
+    preference_id = request.query_params.get("preference_id")
+    payment_id = request.query_params.get("payment_id")
+    print(f"Procesando /success - Preference ID: {preference_id}, Payment ID: {payment_id}")
 
-    print(f"Procesando /success - Session ID: {session_id}")
+    if not preference_id or not payment_id:
+        print("Faltan parámetros preference_id o payment_id")
+        raise HTTPException(status_code=400, detail="Falta el ID de la preferencia o del pago")
 
-    payment = db.query(Payments).filter(Payments.mercado_pago_preapproval_id == session_id).first()
+    payment = db.query(Payments).filter(Payments.mercado_pago_preference_id == preference_id).first()
     if not payment:
-        print(f"Pago no encontrado para mercado_pago_preapproval_id: {session_id}")
+        print(f"Pago no encontrado para preference_id: {preference_id}")
         raise HTTPException(status_code=404, detail="Pago no encontrado")
 
     user = db.query(User).filter(User.id_users == payment.user_id).first()
@@ -359,32 +369,46 @@ async def payment_success(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Usuario asociado al pago no encontrado")
 
     try:
-        preapproval = mercado_pago_sdk.preapproval().get(session_id)["response"]
-        if preapproval["status"] == "authorized":
+        payment_response = mercado_pago_sdk.payment().get(payment_id)
+        payment_data = payment_response["response"]
+        print(f"Estado del pago en /success: {payment_data.get('status')}")
+
+        if payment_data.get("status") == "approved":
             payment.status = PaymentStatus.COMPLETED
-            if preapproval.get("next_payment_date"):
-                payment.subscription_end_date = datetime.strptime(preapproval["next_payment_date"], "%Y-%m-%dT%H:%M:%S.%f%z")
+            payment.mercado_pago_payment_id = payment_id
+            if payment_data.get("date_approved"):
+                start_date = datetime.strptime(payment_data["date_approved"], "%Y-%m-%dT%H:%M:%S.%f%z")
+                days_to_add = 365 if payment.plan in [
+                    PlanType.BASICO_IMPRESORA,
+                    PlanType.RESTAURANTE_IMPRESORA,
+                    PlanType.PLUS_RESTAURANTE_IMPRESORA
+                ] else 30
+                payment.subscription_end_date = start_date + timedelta(days=days_to_add)
             db.commit()
             db.refresh(payment)
             print(f"Pago actualizado: {payment.__dict__}")
+            sync_tables_with_subscription(db, payment.user_id, payment.plan.value, float(payment.amount))
+        else:
+            print(f"Estado del pago no es approved: {payment_data.get('status')}")
+            raise HTTPException(status_code=400, detail=f"El pago no está aprobado: {payment_data.get('status')}")
+
     except Exception as e:
-        print(f"Error al verificar suscripción: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error al verificar suscripción: {str(e)}")
+        print(f"Error al verificar pago: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error al verificar pago: {str(e)}")
 
     subscription_end_date = payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
     return {
-        "message": "¡Suscripción creada con éxito!",
+        "message": "¡Pago procesado con éxito!",
         "status": payment.status.value,
         "user_email": user.email,
         "subscription_end_date": subscription_end_date
     }
 
-# Endpoint de cancelación
+
 @router.get("/cancel", status_code=status.HTTP_200_OK)
 async def payment_cancel():
-    return {"message": "Suscripción cancelada."}
+    return {"message": "Pago cancelado."}
 
-# Verificar pagos
 @router.get("/check-payment")
 async def check_payment(
     db: Session = Depends(get_db),
@@ -405,16 +429,16 @@ async def check_payment(
     ).order_by(Payments.date.desc()).first()
 
     if not payment:
-        print("No se encontraron suscripciones activas")
+        print("No se encontraron pagos activos")
         return {
-            "message": "No se encontraron suscripciones activas en los últimos 30 días",
+            "message": "No se encontraron pagos activos en los últimos 30 días",
             "has_active_subscription": False
         }
 
-    print(f"Suscripción activa encontrada: ID {payment.id_payments}, Fecha: {payment.date}, Plan: {payment.plan}")
+    print(f"Pago activo encontrado: ID {payment.id_payments}, Fecha: {payment.date}, Plan: {payment.plan}")
 
     return {
-        "message": "Última suscripción activa encontrada",
+        "message": "Último pago activo encontrado",
         "has_active_subscription": True,
         "payment": {
             "id": payment.id_payments,
@@ -422,11 +446,11 @@ async def check_payment(
             "date": payment.date.isoformat(),
             "plan": payment.plan.value,
             "status": payment.status.value,
-            "subscription_end_date": payment.subscription_end_date.isoformat() if payment.subscription_end_date else None
+            "subscription_end_date": payment.subscription_end_date.isoformat() if payment.subscription_end_date else None,
+            "checkout_url": payment.checkout_url
         }
     }
 
-# Obtener pagos del usuario
 @router.get("/me", status_code=status.HTTP_200_OK, response_model=List[PaymentResponse])
 async def get_user_payments(
     current_user: User = Depends(get_current_user),
@@ -439,7 +463,6 @@ async def get_user_payments(
 
     return payments
 
-# Sincronización de mesas
 def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: float):
     plan_mesas = {
         PlanType.BASICO.value: 1,
@@ -467,7 +490,7 @@ def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: 
             raise ValueError(f"Monto {amount} no reconocido en amount_mapping")
         subscription_amount = subscription_amount_enum.value
         print(f"Subscription amount mapped to: {subscription_amount}")
-    except (ValueError, TypeTypeError) as e:
+    except (ValueError, TypeError) as e:
         print(f"Error al mapear monto a SubscriptionAmount: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Monto {amount} no válido para SubscriptionAmount")
 
@@ -527,3 +550,35 @@ def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: 
         db.rollback()
         print(f"Error al sincronizar mesas: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al sincronizar mesas: {str(e)}")
+
+@router.get("/public-key")
+async def get_mercado_pago_public_key():
+    return {"public_key": MERCADO_PAGO_PUBLIC_KEY}
+
+
+
+@router.get("/verify-payment/{payment_id}")
+async def verify_payment(payment_id: str, db: Session = Depends(get_db)):
+    try:
+        payment_response = mercado_pago_sdk.payment().get(payment_id)
+        payment_data = payment_response["response"]
+        print(f"Estado del pago {payment_id}: {payment_data.get('status')}")
+
+        preference_id = payment_data.get("preference_id")
+        payment = db.query(Payments).filter(Payments.mercado_pago_preference_id == preference_id).first()
+        if not payment:
+            raise HTTPException(status_code=404, detail="Pago no encontrado")
+
+        payment.mercado_pago_payment_id = payment_id
+        payment_status = payment_data.get("status")
+        if payment_status == "approved":
+            payment.status = PaymentStatus.COMPLETED
+        elif payment_status in ["rejected", "cancelled"]:
+            payment.status = PaymentStatus.FAILED
+        else:
+            payment.status = PaymentStatus.PENDING
+        db.commit()
+        db.refresh(payment)
+        return {"message": "Pago verificado", "status": payment.status.value}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al verificar pago: {str(e)}")

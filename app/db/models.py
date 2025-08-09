@@ -277,17 +277,17 @@ class Payments(Base):
     date = Column(DateTime)
     subscription_end_date = Column(DateTime, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Clave foránea a la tabla 'users'
-    stripe_payment_intent_id = Column(String(255), nullable  = True) #    id de pago de Stripe
-    stripe_customer_id = Column(String(255), nullable=True)  # Nuevo campo para el cliente de Stripe
     subscription_id = Column(String(255), nullable=True)  # Nuevo campo para el ID de la suscripción
     #plan = Column(SQLAlchemyEnum(PlanType), nullable=False)  # Nuevo campo para el plan
     plan = Column(SQLAlchemyEnum(PlanType, values_callable=lambda x: [e.value for e in x]), nullable=False)  # Nuevo campo para el plan, con valores de Enum
     status = Column(SQLAlchemyEnum(PaymentStatus), default=PaymentStatus.PENDING)
     checkout_session_id = Column(String(255), nullable=True)  # Nueva columna para el ID de la sesión de pago de Stripe
     email = Column(String(255), nullable=True)
+    mercado_pago_preference_id = Column(String(255), nullable=True)
     mercado_pago_customer_id = Column(String(255), nullable=True)  # Nuevo campo
     mercado_pago_payment_id = Column(String(255), nullable=True)  # Nuevo campo
     mercado_pago_preapproval_id = Column(String(255), nullable=True)  # Nuevo campo
+    checkout_url = Column(String(255), nullable=True)  # Nuevo campo para el enlace
 
     # Relaciones
     #order = relationship("Orders", back_populates="payments")

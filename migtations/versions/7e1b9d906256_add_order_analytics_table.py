@@ -19,17 +19,20 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
-    op.create_table(
-        'order_analytics',
-        sa.Column('id_analytics', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('period_start', sa.DateTime(), nullable=False),
-        sa.Column('period_type', sa.String(length=10), nullable=False),
-        sa.Column('total_orders', sa.Integer(), nullable=False),
-        sa.Column('total_revenue', sa.Float(), nullable=False),
-        sa.Column('total_products_sold', sa.Integer(), nullable=False),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id_users'), nullable=False),
-        sa.PrimaryKeyConstraint('id_analytics')
-    )
+
+    """Upgrade schema."""
+    # op.create_table(
+    #     'order_analytics',
+    #     sa.Column('id_analytics', sa.Integer(), autoincrement=True, nullable=False),
+    #     sa.Column('period_start', sa.DateTime(), nullable=False),
+    #     sa.Column('period_type', sa.String(length=10), nullable=False),
+    #     sa.Column('total_orders', sa.Integer(), nullable=False),
+    #     sa.Column('total_revenue', sa.Float(), nullable=False),
+    #     sa.Column('total_products_sold', sa.Integer(), nullable=False),
+    #     sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id_users'), nullable=False),
+    #     sa.PrimaryKeyConstraint('id_analytics')
+    # )
 
 def downgrade():
+    """Downgrade schema."""
     op.drop_table('order_analytics')

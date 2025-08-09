@@ -19,9 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
+    """Upgrade schema."""
     # Añadir la columna 'utilidades' a la tabla 'orders_details'
-    op.add_column('orders_details', sa.Column('utilidades', sa.DECIMAL(10, 2), nullable=True))
+    #op.add_column('orders_details', sa.Column('utilidades', sa.DECIMAL(10, 2), nullable=True))
 
 def downgrade():
+    """Downgrade schema."""
     # Eliminar la columna 'utilidades' en caso de revertir la migración
     op.drop_column('orders_details', 'utilidades')
