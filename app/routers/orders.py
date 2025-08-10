@@ -1171,13 +1171,28 @@ async def finalizar_orden(
     
     new_total = sum(float(detail.subtotal) for detail in all_order_details if detail.subtotal is not None)
     db_order.total = new_total  # Actualizar el total en la orden
-    db.add(db_order)
+   
+    # 🆕 Actualizar la hora del pedido al realizar un cambio
+    #db_order.date_time = datetime.now()
+    #db.add(db_order)
+
+     # --- NUEVA LÓGICA: Cancelar la orden si todos los detalles están cancelados en menos de 1 minuto ---
+    detalles_todos = db.query(OrdersDetailsModel).filter(
+        OrdersDetailsModel.order_id == db_order.id_orders
+    ).all()
+    if detalles_todos and all(d.order_detail_status == OrderStatusEnum.Cancelado for d in detalles_todos):
+        db_order.order_status = OrderStatusEnum.Cancelado
+        db.add(db_order)  
+        #if (datetime.now() - db_order.date_time).total_seconds() >= 180:
+        #    db_order.order_status = OrderStatusEnum.Cancelado
+        #    db.add(db_order)
 
     # 6. Confirmar los cambios en la base de datos
     db.commit()
     db.refresh(db_order)  # Refrescar la orden para asegurar que los datos estén actualizados
 
     return updated_details
+
 #------------------------------------------
 #------------------------------------------
 

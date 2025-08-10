@@ -30,7 +30,7 @@ load_dotenv()
 # Configurar Mercado Pago SDK
 MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN")
 MERCADO_PAGO_PUBLIC_KEY = os.getenv("MERCADO_PAGO_PUBLIC_KEY")
-YOUR_DOMAIN = os.getenv("YOUR_DOMAIN", "https://ac9173dd0bcd.ngrok-free.app")
+YOUR_DOMAIN = os.getenv("YOUR_DOMAIN", "https://api.wapifood.com").rstrip("/")
 #YOUR_DOMAIN = os.getenv("YOUR_DOMAIN", "http://127.0.0.1:8000")
 #mercado_pago_webhook_secret = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET")
 
@@ -105,6 +105,7 @@ PLAN_PRICES = {
 }
 
 
+
 @router.post("/create-checkout-session")
 async def create_checkout_session(
     subscription_request: SubscriptionRequest,
@@ -130,16 +131,16 @@ async def create_checkout_session(
                 "email": current_user.email
             },
             "back_urls": {
-                "success": f"{YOUR_DOMAIN}/payments/success",
-                "failure": f"{YOUR_DOMAIN}/payments/cancel",
-                "pending": f"{YOUR_DOMAIN}/payments/cancel"
+                "success": "https://wapifood.com/success",
+                "failure": "https://wapifood.com/error"
+            
             },
             "auto_return": "approved",
             "external_reference": f"user_{current_user.id_users}",
             "payment_methods": {
                 "installments": 1
             },
-            "notification_url": f"{YOUR_DOMAIN}/payments/webhook"  # Agregar el webhook
+            "notification_url": f"https://api.wapifood.com/payments/webhook"  # Agregar el webhook
         }
 
         preference_response = mercado_pago_sdk.preference().create(preference_data)
@@ -189,44 +190,55 @@ async def create_checkout_session(
         raise HTTPException(status_code=400, detail=f"Error al crear pago: {str(e)}")
     
 
+# Configuración de Mercado Pago (ya definida en tu código)
 
 @router.post("/webhook", status_code=status.HTTP_200_OK)
 async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
     try:
-        # Obtener el cuerpo crudo para depuración
+        # Log para depuración
+        print(f"Webhook Headers: {dict(request.headers)}")
+        print(f"Webhook Query Params: {dict(request.query_params)}")
         body = await request.body()
         print(f"Webhook recibido - Cuerpo crudo: {body}")
 
+        # Obtener parámetros de consulta
+        query_params = request.query_params
+        topic = query_params.get("topic") or query_params.get("type")
+        payment_id = query_params.get("id") or query_params.get("data.id")
+        
+        # Intentar obtener cuerpo JSON
         try:
             payload = await request.json()
-        except ValueError as e:
-            print(f"Error al parsear JSON: {str(e)}")
-            return {"status": "ignored", "message": "Cuerpo de solicitud inválido o vacío"}
+            topic = topic or payload.get("topic") or payload.get("type") or payload.get("action")
+            payment_id = payment_id or payload.get("data", {}).get("id") or payload.get("resource", "").split("/")[-1]
+            print(f"Webhook JSON Payload: {payload}")
+        except ValueError:
+            print("No se recibió un cuerpo JSON válido")
 
-        topic = payload.get("topic")
-        data = payload.get("data", {})
-        print(f"Webhook recibido - Topic: {topic}, Datos: {data}")
+        if not topic:
+            print("No se encontró topic en el evento")
+            return {"status": "ignored", "message": "No topic in event"}
 
-        if topic == "payment":
-            payment_id = data.get("id")
-            print(f"Payment ID: {payment_id}")
+        if topic in ["payment", "payment.created"]:
             if not payment_id:
                 print("No se encontró payment_id en el evento")
                 return {"status": "ignored", "message": "No payment_id in event"}
 
+            # Obtener información del pago
             payment_response = mercado_pago_sdk.payment().get(payment_id)
             print(f"Respuesta de obtención de pago: {payment_response['response']}")
             payment_data = payment_response["response"]
 
-            # Intentar obtener el preference_id desde el merchant_order
-            merchant_order_id = payment_data.get("order", {}).get("id")
-            preference_id = None
-            if merchant_order_id:
-                merchant_order_response = mercado_pago_sdk.merchant_order().get(merchant_order_id)
-                print(f"Respuesta de merchant_order: {merchant_order_response['response']}")
-                merchant_order_data = merchant_order_response["response"]
-                preference_id = merchant_order_data.get("preference_id")
-                print(f"Preference ID desde merchant_order: {preference_id}")
+            # Intentar obtener preference_id
+            preference_id = payment_data.get("preference_id")
+            if not preference_id:
+                merchant_order_id = payment_data.get("order", {}).get("id")
+                if merchant_order_id:
+                    merchant_order_response = mercado_pago_sdk.merchant_order().get(merchant_order_id)
+                    print(f"Respuesta de merchant_order: {merchant_order_response['response']}")
+                    merchant_order_data = merchant_order_response["response"]
+                    preference_id = merchant_order_data.get("preference_id")
+                    print(f"Preference ID desde merchant_order: {preference_id}")
 
             if not preference_id:
                 print("No se encontró preference_id en el pago o merchant_order")
@@ -279,7 +291,7 @@ async def mercado_pago_webhook(request: Request, db: Session = Depends(get_db)):
             sync_tables_with_subscription(db, payment.user_id, payment.plan.value, float(payment.amount))
 
         elif topic == "merchant_order":
-            merchant_order_id = data.get("id")
+            merchant_order_id = payment_id or query_params.get("id") or payload.get("resource", "").split("/")[-1]
             print(f"Merchant Order ID: {merchant_order_id}")
             if not merchant_order_id:
                 print("No se encontró merchant_order_id en el evento")
