@@ -393,36 +393,41 @@ async def crear_orden(
 
     # 10. Si existe una orden activa, actualizarla; si no, crear una nueva
     if existing_order:
-        # Actualizar la orden existente
+        #
+        # Actualizar totales y nombres
         existing_order.total = float(existing_order.total or 0.0) + new_total
         existing_order.product_name = ", ".join(
             list(set(existing_order.product_name.split(", ") + product_names)) if existing_order.product_name else product_names
         )
-        existing_order.date_time = datetime.now()  # Actualizar la fecha
-        existing_order.metodo_pago = metodo_pago  # Actualizar método de pago
-        # Actualizar el estado de la orden según las mini órdenes
-        mini_orders = existing_order.order_details
-        if all(detail.order_detail_status == OrderStatusEnum.Finalizado for detail in mini_orders):
-            existing_order.order_status = OrderStatusEnum.Finalizado
-        elif any(detail.order_detail_status == OrderStatusEnum.Cancelado for detail in mini_orders):
-            existing_order.order_status = OrderStatusEnum.Cancelado
-        else:
-            existing_order.order_status = OrderStatusEnum.Pendiente  # Estado por defecto si hay mezcla
-        db.add(existing_order)
+        existing_order.date_time = datetime.now()
+        existing_order.metodo_pago = metodo_pago
 
-        # Añadir nuevos detalles con estatus Pendiente
+        # Añadir primero los nuevos detalles (estado Pendiente)
         for db_product, qty in zip(products, quantities_list):
             unit_price = float(db_product.price)
             subtotal = qty * unit_price
-            db_order_detail = OrdersDetailsModel(
+            db.add(OrdersDetailsModel(
                 order_id=existing_order.id_orders,
                 product_id=db_product.id_products,
                 quantity=qty,
                 unit_price=unit_price,
                 subtotal=subtotal,
                 order_detail_status=OrderStatusEnum.Pendiente
-            )
-            db.add(db_order_detail)
+            ))
+        db.flush()  # Disponibles en existing_order.order_details
+
+        # Recalcular estado basado en TODOS los detalles actuales
+        detalles = list(existing_order.order_details)
+        if detalles:
+            if all(d.order_detail_status == OrderStatusEnum.Finalizado for d in detalles):
+                existing_order.order_status = OrderStatusEnum.Finalizado
+            elif all(d.order_detail_status == OrderStatusEnum.Cancelado for d in detalles):
+                existing_order.order_status = OrderStatusEnum.Cancelado
+            else:
+                # Mezcla (Pendiente / Cancelado / Finalizado) => mantener Pendiente salvo que fuera PuntoDeVenta para mesa 1
+                if existing_order.order_status != OrderStatusEnum.PuntoDeVenta:
+                    existing_order.order_status = OrderStatusEnum.Pendiente
+        db.add(existing_order)
     else:
         # Crear una nueva orden
         initial_status = OrderStatusEnum.PuntoDeVenta if table_number == 1 else OrderStatusEnum.Pendiente
@@ -1171,21 +1176,16 @@ async def finalizar_orden(
     
     new_total = sum(float(detail.subtotal) for detail in all_order_details if detail.subtotal is not None)
     db_order.total = new_total  # Actualizar el total en la orden
-   
-    # 🆕 Actualizar la hora del pedido al realizar un cambio
-    #db_order.date_time = datetime.now()
-    #db.add(db_order)
+    db.add(db_order)
 
-     # --- NUEVA LÓGICA: Cancelar la orden si todos los detalles están cancelados en menos de 1 minuto ---
+     # --- NUEVA LÓGICA: Cancelar la orden si todos los detalles están cancelados
     detalles_todos = db.query(OrdersDetailsModel).filter(
         OrdersDetailsModel.order_id == db_order.id_orders
     ).all()
     if detalles_todos and all(d.order_detail_status == OrderStatusEnum.Cancelado for d in detalles_todos):
         db_order.order_status = OrderStatusEnum.Cancelado
         db.add(db_order)  
-        #if (datetime.now() - db_order.date_time).total_seconds() >= 180:
-        #    db_order.order_status = OrderStatusEnum.Cancelado
-        #    db.add(db_order)
+ 
 
     # 6. Confirmar los cambios en la base de datos
     db.commit()
