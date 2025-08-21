@@ -313,9 +313,13 @@ async def crear_orden(
 
     # 5. Determinar el número máximo de mesas según el monto de la suscripción
     subscription_mesas = {
+        SubscriptionAmount.PLAN_INAUGURACION.value: 1,
         SubscriptionAmount.PLAN_100.value: 1,
         SubscriptionAmount.PLAN_200.value: 16,
-        SubscriptionAmount.PLAN_300.value: 26
+        SubscriptionAmount.PLAN_300.value: 26,
+        SubscriptionAmount.BASICO_IMPRESORA.value: 1,  # Ajusta según tu lógica
+        SubscriptionAmount.RESTAURANTE_IMPRESORA.value: 16,  # Ajusta según tu lógica
+        SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA.value: 26  # Ajusta según tu lógica
     }
     try:
         amount_float = float(payment.amount) if payment.amount else 0.0

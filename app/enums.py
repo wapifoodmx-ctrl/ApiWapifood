@@ -27,6 +27,7 @@ class TablesEnum(str, Enum):
     NoDisponible ="NoDisponible"
 
 class SubscriptionAmount(Enum):
+    PLAN_INAUGURACION = 15  # 1 mesa
     PLAN_100 = 100  # 1 mesa
     PLAN_200 = 200  # 16 mesas
     PLAN_300 = 300  # 26 mesas
@@ -43,13 +44,23 @@ class PaymentMethodEnum(str, Enum):
 
 
 # Definir los tipos de planes disponibles como un Enum
+# class PlanType(str, Enum):
+#     INAUGURACION = "inauguracion"
+#     BASICO = "basico"
+#     PROFESIONAL = "profesional"
+#     EMPRESARIAL = "empresarial"
+#     BASICO_IMPRESORA = "basico + impresora"
+#     RESTAURANTE_IMPRESORA = "plan restaurante + impresora"
+#     PLUS_RESTAURANTE_IMPRESORA = "plan restaurante plus + impresora"
+
 class PlanType(str, Enum):
+    INAUGURACION = "inauguracion"
     BASICO = "basico"
     PROFESIONAL = "profesional"
     EMPRESARIAL = "empresarial"
-    BASICO_IMPRESORA = "basico + impresora"
-    RESTAURANTE_IMPRESORA = "plan restaurante + impresora"
-    PLUS_RESTAURANTE_IMPRESORA = "plan restaurante plus + impresora"
+    BASICO_IMPRESORA = "basico_impresora"
+    RESTAURANTE_IMPRESORA = "restaurante_impresora"
+    PLUS_RESTAURANTE_IMPRESORA = "plus_restaurante_impresora"
 
 
 

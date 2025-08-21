@@ -72,6 +72,11 @@ mercado_pago_sdk = mercadopago.SDK(MERCADO_PAGO_ACCESS_TOKEN)
 
 # Mapa de precios para los planes
 PLAN_PRICES = {
+    PlanType.INAUGURACION: {
+        "amount": 15.0,
+        "currency": "MXN",
+        "description": "Plan de Inauguración (Promocional)"
+    },
     PlanType.BASICO: {
         "amount": 100.0,
         "currency": "MXN",
@@ -116,6 +121,16 @@ async def create_checkout_session(
         plan_details = PLAN_PRICES.get(subscription_request.plan)
         if not plan_details:
             raise HTTPException(status_code=400, detail="Plan no válido")
+        
+
+    # Validar que el plan de inauguración solo esté disponible para usuarios nuevos
+        if subscription_request.plan == PlanType.INAUGURACION:
+            existing_payment = db.query(Payments).filter(
+                Payments.user_id == current_user.id_users,
+                Payments.status == PaymentStatus.COMPLETED
+            ).first()
+            if existing_payment:
+                raise HTTPException(status_code=400, detail="El plan de inauguración solo está disponible para usuarios nuevos")
 
         # Crear preferencia de pago único
         preference_data = {
@@ -166,7 +181,7 @@ async def create_checkout_session(
             subscription_end_date=subscription_end_date,
             user_id=current_user.id_users,
             mercado_pago_preference_id=preference_id,  # Usar un campo específico para preference_id
-            plan=subscription_request.plan,
+            plan=subscription_request.plan.value,
             status=PaymentStatus.PENDING,
             email=current_user.email,
             checkout_url=preference.get("init_point")
@@ -429,16 +444,20 @@ async def check_payment(
     user_email = current_user.email
     print(f"Buscando pagos para el correo: {user_email}")
 
-    cutoff_date = datetime.utcnow() - timedelta(days=30)
+    cutoff_date = datetime.utcnow() - timedelta(days=365)
     current_time = datetime.utcnow()
 
     payment = db.query(Payments).filter(
         Payments.email == user_email,
         Payments.date >= cutoff_date,
-        Payments.status == PaymentStatus.COMPLETED,
+        Payments.status.in_([PaymentStatus.COMPLETED, PaymentStatus.PENDING]),
         Payments.subscription_end_date != None,
         Payments.subscription_end_date > current_time
     ).order_by(Payments.date.desc()).first()
+
+    # Obtener la hora de ejecución en formato ISO
+    execution_time = datetime.utcnow().isoformat()
+
 
     if not payment:
         print("No se encontraron pagos activos")
@@ -456,11 +475,12 @@ async def check_payment(
             "id": payment.id_payments,
             "amount": float(payment.amount),
             "date": payment.date.isoformat(),
-            "plan": payment.plan.value,
+            "plan": payment.plan,
             "status": payment.status.value,
             "subscription_end_date": payment.subscription_end_date.isoformat() if payment.subscription_end_date else None,
             "checkout_url": payment.checkout_url
-        }
+        },
+        "execution_time": execution_time  # Agregar hora de ejecución
     }
 
 @router.get("/me", status_code=status.HTTP_200_OK, response_model=List[PaymentResponse])
@@ -477,6 +497,7 @@ async def get_user_payments(
 
 def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: float):
     plan_mesas = {
+        PlanType.INAUGURACION.value: 1,  # 1 mesa para el plan de inauguración
         PlanType.BASICO.value: 1,
         PlanType.PROFESIONAL.value: 16,
         PlanType.EMPRESARIAL.value: 26,
@@ -489,6 +510,7 @@ def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: 
         raise HTTPException(status_code=400, detail="Plan no reconocido")
 
     amount_mapping = {
+        15.0: SubscriptionAmount.PLAN_INAUGURACION,
         100.0: SubscriptionAmount.PLAN_100,
         200.0: SubscriptionAmount.PLAN_200,
         300.0: SubscriptionAmount.PLAN_300,

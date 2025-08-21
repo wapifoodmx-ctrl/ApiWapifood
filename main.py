@@ -180,9 +180,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 # RUTA PROTEGIDA PARA LA DOCUMENTACIÓN SWAGGER
-@app.get("/secret-docs", include_in_schema=False)
+@app.get("/api_wapi", include_in_schema=False)
 def get_docs(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "admin" or credentials.password != "1234":
+    if credentials.username != "wapi" or credentials.password != "W4p1T3cH-W4p1F00d":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No autorizado",
@@ -193,7 +193,7 @@ def get_docs(credentials: HTTPBasicCredentials = Depends(security)):
 # RUTA PROTEGIDA PARA EL ESQUEMA OPENAPI
 @app.get("/openapi.json", include_in_schema=False)
 def openapi(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "admin" or credentials.password != "1234":
+    if credentials.username != "wapi" or credentials.password != "W4p1T3cH-W4p1F00d":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No autorizado",
