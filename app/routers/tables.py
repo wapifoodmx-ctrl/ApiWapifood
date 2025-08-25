@@ -226,6 +226,7 @@ def get_tables_status(
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
 
     subscription_mesas = {
+        15.00: 1,
         100.00: 1,
         200.00: 16,
         300.00: 26,

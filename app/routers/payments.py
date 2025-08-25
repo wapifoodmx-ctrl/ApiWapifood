@@ -450,7 +450,8 @@ async def check_payment(
     payment = db.query(Payments).filter(
         Payments.email == user_email,
         Payments.date >= cutoff_date,
-        Payments.status.in_([PaymentStatus.COMPLETED, PaymentStatus.PENDING]),
+        #Payments.status.in_([PaymentStatus.COMPLETED, PaymentStatus.PENDING]),
+        Payments.status == PaymentStatus.COMPLETED,
         Payments.subscription_end_date != None,
         Payments.subscription_end_date > current_time
     ).order_by(Payments.date.desc()).first()
