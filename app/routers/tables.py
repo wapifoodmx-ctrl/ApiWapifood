@@ -196,7 +196,8 @@ async def generate_tables_sub(
             capacity=4,  # Valor por defecto de 4 personas (ajustable)
             state=TablesEnum.Libre,
             user_id=current_user.id_users,
-            subscription_amount=SubscriptionAmount(payment.amount)  # Asignar el monto de la suscripción
+            subscription_amount=payment.amount
+            #subscription_amount=SubscriptionAmount(payment.amount)  # Asignar el monto de la suscripción
         )
         tables.append(table)
 

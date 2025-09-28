@@ -117,7 +117,7 @@ from typing import List, Dict
 import uvicorn
 
 # Rutas
-from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics
+from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free
 
 # Seguridad
 security = HTTPBasic()
@@ -143,6 +143,8 @@ app.include_router(orders.router)
 app.include_router(analytics.router)
 app.include_router(tables.router)
 app.include_router(payments.router)
+app.include_router(free.router)
+
 
 # Archivos estáticos
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -182,7 +184,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # RUTA PROTEGIDA PARA LA DOCUMENTACIÓN SWAGGER
 @app.get("/api_wapi", include_in_schema=False)
 def get_docs(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "wapi" or credentials.password != "W4p1T3cH-W4p1F00d":
+    if credentials.username != "wapi" or credentials.password != " ":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No autorizado",
