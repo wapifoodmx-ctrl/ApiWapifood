@@ -102,7 +102,7 @@ class User(Base):
     password = Column(String(255),  nullable = False)
     rol = Column(SQLAlchemyEnum(RoleEnum), nullable=False, default=RoleEnum.admin)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)  # Campo para la fecha de creación
-    uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    #uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     #restaurante_id = Column(Integer, ForeignKey("restaurante.id_restaurante"), nullable=True)  # Nueva clave foránea, opcional
     uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     # Relaciones
@@ -178,6 +178,7 @@ class Orders(Base):
     order_uuid = Column(String(36), unique=False, nullable=False, default=lambda: str(uuid.uuid4()))  # Nuevo campo UUID
     metodo_pago = Column(SQLAlchemyEnum(PaymentMethodEnum), nullable=False, default=PaymentMethodEnum.efectivo)  # Nuevo campo para el método de pago
     ticket_number = Column(Integer, nullable=True)  # Cambiado a Integer
+    descuento = Column(String(20), nullable=True, default="0")  # Nuevo campo para descuento
 
     #codigo_confirmacion = Column(String(4), nullable=False, server_default='0001')  # Valor por defecto temporal
     # Relaciones
@@ -261,6 +262,7 @@ class OrdersDetails(Base):
     order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus 
     #costo_producion = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
     utilidades = Column(Decimal(10, 2), nullable=True)  # Nueva columna para utilidades
+    descuento_details = Column(String(20), nullable=True, default="0")  # Nuevo campo para descuento
     
     # Relaciones
       # Relaciones

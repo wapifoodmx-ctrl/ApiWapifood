@@ -149,12 +149,12 @@ app.include_router(free.router)
 # Archivos estáticos
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-# CORS
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-]
+# # CORS
+# origins = [
+#     "http://localhost:3000",
+#     "http://localhost:5173",
+#     "http://127.0.0.1:3000",
+# ]
 
 app.add_middleware(
     CORSMiddleware,
@@ -184,7 +184,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # RUTA PROTEGIDA PARA LA DOCUMENTACIÓN SWAGGER
 @app.get("/api_wapi", include_in_schema=False)
 def get_docs(credentials: HTTPBasicCredentials = Depends(security)):
-    if credentials.username != "wapi" or credentials.password != " ":
+    if credentials.username != "wapi" or credentials.password != "W4p1T3cH-W4p1F00d":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No autorizado",

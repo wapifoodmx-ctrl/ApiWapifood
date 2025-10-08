@@ -22,7 +22,7 @@ async def activate_plan(
     db: Session = Depends(get_db)
 ):
     # Buscar el user_id en la tabla users usando el email
-    query_user = text("SELECT id_users FROM mydb.users WHERE email = :email")
+    query_user = text("SELECT id_users FROM wapifood.users WHERE email = :email")
     result = db.execute(query_user, {"email": input.email}).fetchone()
     
     if not result:
@@ -40,7 +40,7 @@ async def activate_plan(
     
     # Query SQL ajustada a la estructura de la tabla en producción
     query = text("""
-        INSERT INTO mydb.payments (
+        INSERT INTO wapifood.payments (
             payment_method, amount, date, user_id, plan, subscription_id,
             status, checkout_session_id, email, subscription_end_date,
             mercado_pago_customer_id, mercado_pago_payment_id,

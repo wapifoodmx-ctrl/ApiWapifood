@@ -267,18 +267,20 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
 #------------------------------------------
 #------------------------------------------
-
 @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
     description="Crea una nueva orden o añade productos a una orden existente para una mesa especificada. La mesa con número 1 siempre permanece en estado Libre y sus órdenes inician como PuntoDeVenta. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa (no finalizada ni cancelada).")
 async def crear_orden(
     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
     quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
+    descuento: str = Form("0", description="Descuento aplicado al total, en formato de cadena (ejemplo: '10%', '5.00')"),
+    descuento_details: str = Form("0", description="Descuento aplicado a la orden_detail, en formato de cadena (ejemplo: '10%', '5.00')"),
     table_number: int = Form(..., description="Número de la mesa a asignar a la orden (la mesa con número 1 siempre permanece disponible)"),
     metodo_pago: PaymentMethodEnum = Form(PaymentMethodEnum.efectivo, description="Método de pago de la orden (efectivo, tarjeta, pasarela)"),
     order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     token: str = Depends(oauth2_scheme)
+
 ):
     logging.basicConfig(level=logging.DEBUG)
 
@@ -288,6 +290,45 @@ async def crear_orden(
         quantities_list = [int(qty) for qty in quantities.split(",")]
     except ValueError:
         raise HTTPException(status_code=400, detail="Los product_ids y quantities deben ser listas de números enteros separados por comas")
+    
+        # Validar descuento de la orden
+    if "%" in descuento:
+        try:
+            valor = float(descuento.replace("%", ""))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="El descuento porcentual debe ser un número válido")
+        if valor < 0 or valor > 100:
+            raise HTTPException(status_code=400, detail="El descuento porcentual debe estar entre 0% y 100%")
+    else:
+        try:
+            valor = float(descuento)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="El descuento debe ser un número válido")
+        if valor < 0:
+            raise HTTPException(status_code=400, detail="El descuento no puede ser menor a 0")
+
+    # Validar descuento_details para cada producto
+    descuento_details_list = descuento_details.split(",")
+    if len(descuento_details_list) != len(product_ids.split(",")):
+        raise HTTPException(status_code=400, detail="El número de descuentos por detalle debe coincidir con el número de productos")
+
+    # Validar cada descuento_details
+    for idx, desc_det in enumerate(descuento_details_list):
+        desc_det = desc_det.strip()
+        if "%" in desc_det:
+            try:
+                valor_det = float(desc_det.replace("%", ""))
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"El descuento porcentual del detalle debe ser válido en el producto {product_ids_list[idx]}")
+            if valor_det < 0 or valor_det > 100:
+                raise HTTPException(status_code=400, detail=f"El descuento porcentual del detalle debe estar entre 0% y 100% en el producto {product_ids_list[idx]}")
+        else:
+            try:
+                valor_det = float(desc_det)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"El descuento del detalle debe ser válido en el producto {product_ids_list[idx]}")
+            if valor_det < 0:
+                raise HTTPException(status_code=400, detail=f"El descuento del detalle no puede ser menor a 0 en el producto {product_ids_list[idx]}")
 
     # 2. Validar que las listas tengan la misma longitud
     if len(product_ids_list) != len(quantities_list):
@@ -389,16 +430,40 @@ async def crear_orden(
             raise HTTPException(status_code=403, detail=f"No tienes permiso para crear una orden para el producto con ID {product_id}")
         products.append(db_product)
         product_names.append(db_product.name)
-
-    # 9. Calcular el total de los nuevos productos
+    # 9. Calcular el total de los nuevos productos aplicando descuento_details
     new_total = 0.0
-    for db_product, qty in zip(products, quantities_list):
-        new_total += float(db_product.price) * qty
+    subtotals = []
+    for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
+        unit_price = float(db_product.price)
+        subtotal = qty * unit_price
+
+        # Aplicar descuento_details al subtotal
+        desc_det = descuento_details_list[idx].strip()
+        if "%" in desc_det:
+            valor_det = float(desc_det.replace("%", ""))
+            descuento_aplicado = subtotal * (valor_det / 100)
+        else:
+            descuento_aplicado = float(desc_det)
+        subtotal -= descuento_aplicado
+        if subtotal < 0:
+            subtotal = 0.0
+
+        subtotals.append(subtotal)
+        new_total += subtotal
+
+    # Aplicar descuento general al total
+    if descuento and descuento != "0":
+        if "%" in descuento:
+            valor = float(descuento.replace("%", ""))
+            descuento_aplicado = new_total * (valor / 100)
+        else:
+            descuento_aplicado = float(descuento)
+        new_total -= descuento_aplicado
+        if new_total < 0:
+            new_total = 0.0
 
     # 10. Si existe una orden activa, actualizarla; si no, crear una nueva
     if existing_order:
-        #
-        # Actualizar totales y nombres
         existing_order.total = float(existing_order.total or 0.0) + new_total
         existing_order.product_name = ", ".join(
             list(set(existing_order.product_name.split(", ") + product_names)) if existing_order.product_name else product_names
@@ -406,68 +471,56 @@ async def crear_orden(
         existing_order.date_time = datetime.now()
         existing_order.metodo_pago = metodo_pago
 
-        # Añadir primero los nuevos detalles (estado Pendiente)
-        for db_product, qty in zip(products, quantities_list):
+        # Añadir los nuevos detalles con descuento_details aplicado al subtotal
+        for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
             unit_price = float(db_product.price)
-            subtotal = qty * unit_price
+            subtotal = subtotals[idx]
             db.add(OrdersDetailsModel(
                 order_id=existing_order.id_orders,
                 product_id=db_product.id_products,
                 quantity=qty,
                 unit_price=unit_price,
                 subtotal=subtotal,
-                order_detail_status=OrderStatusEnum.Pendiente
+                order_detail_status=OrderStatusEnum.Pendiente,
+                descuento_details=descuento_details_list[idx].strip()
             ))
-        db.flush()  # Disponibles en existing_order.order_details
-
-        # Recalcular estado basado en TODOS los detalles actuales
-        detalles = list(existing_order.order_details)
-        if detalles:
-            if all(d.order_detail_status == OrderStatusEnum.Finalizado for d in detalles):
-                existing_order.order_status = OrderStatusEnum.Finalizado
-            elif all(d.order_detail_status == OrderStatusEnum.Cancelado for d in detalles):
-                existing_order.order_status = OrderStatusEnum.Cancelado
-            else:
-                # Mezcla (Pendiente / Cancelado / Finalizado) => mantener Pendiente salvo que fuera PuntoDeVenta para mesa 1
-                if existing_order.order_status != OrderStatusEnum.PuntoDeVenta:
-                    existing_order.order_status = OrderStatusEnum.Pendiente
+        db.flush()
         db.add(existing_order)
     else:
-        # Crear una nueva orden
         initial_status = OrderStatusEnum.PuntoDeVenta if table_number == 1 else OrderStatusEnum.Pendiente
         db_order = OrdersModel(
             mesa_id=db_table.id_tables,
-            state=RoleOrders.Ocupado if table_number != 1 else RoleOrders.Libre,  # Mesa 1 siempre Libre
-            order_status=initial_status,  # PuntoDeVenta para mesa 1
+            state=RoleOrders.Ocupado if table_number != 1 else RoleOrders.Libre,
+            order_status=initial_status,
             date_time=datetime.now(),
+            descuento=descuento,
             total=new_total,
             orderscol="Orden creada manualmente",
             product_name=", ".join(product_names),
             user_id=current_user.id_users,
             order_uuid=order_uuid,
             metodo_pago=metodo_pago
-            # No se incluye codigo_confirmacion, se usa el server_default
         )
         db.add(db_order)
 
-        # Actualizar el estado de la mesa solo si no es la mesa 1
         if db_table.number != 1 and db_table.state == TablesEnum.Libre:
             db_table.state = TablesEnum.Ocupado
 
         db.commit()
         db.refresh(db_order)
 
-        # Crear los detalles de pedido con estatus Pendiente
-        for db_product, qty in zip(products, quantities_list):
+        # Crear los detalles de pedido con descuento_details aplicado al subtotal
+        for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
             unit_price = float(db_product.price)
-            subtotal = qty * unit_price
+            subtotal = subtotals[idx]
             db_order_detail = OrdersDetailsModel(
                 order_id=db_order.id_orders,
                 product_id=db_product.id_products,
                 quantity=qty,
                 unit_price=unit_price,
+                descuento_details=descuento_details_list[idx].strip(),
                 subtotal=subtotal,
-                order_detail_status=OrderStatusEnum.Pendiente
+                order_detail_status=OrderStatusEnum.Pendiente,
             )
             db.add(db_order_detail)
 
@@ -478,7 +531,7 @@ async def crear_orden(
     db_order = existing_order or db_order
     db.refresh(db_order)
 
-    # 10. Crear respuesta con el número de mesa
+    # 12. Crear respuesta con el número de mesa
     order_response = OrderCreateResponse.from_orm(db_order)
     order_response.mesa_id = db_order.mesa_id
     order_response.mesa_number = db_table.number
@@ -522,6 +575,7 @@ def obtenemos_orders_details(
             "state": order.state,
             "order_status": order.order_status,  # Agregado
             "date_time": order.date_time,
+            "descuento": order.descuento if order.descuento is not None else 0.0,  # Valor por defecto
             "total": float(order.total) if order.total is not None else 0.0,
             "orderscol": order.orderscol,  # Requerido por el esquema
             "user_id": order.user_id,  # Requerido por el esquema
@@ -535,6 +589,7 @@ def obtenemos_orders_details(
                     #"product_id": detail.product_id,
                     "quantity": detail.quantity,
                     "unit_price": detail.unit_price if detail.unit_price is not None else 0.0,  # Valor por defecto
+                    "descuento_details": detail.descuento_details if detail.descuento_details is not None else "0",  # Valor por defecto
                     "subtotal": detail.subtotal if detail.subtotal is not None else 0.0, # Valor por defecto
                     "order_detail_status": detail.order_detail_status  # Agregado para el estatus del detalle
                 }
@@ -575,6 +630,7 @@ def obtener_ordenes_por_uuid(
             #"mesa_number": mesa_number,
             "state": orden.state,
             "date_time": orden.date_time,
+            "descuento": orden.descuento if orden.descuento else 0.0,
             "total": float(orden.total) if orden.total else 0.0,
             "product_name": orden.product_name,
             "ticke_number": orden.ticket_number if orden.ticket_number else "Sin número de ticket"
@@ -866,9 +922,11 @@ async def obtener_orden_por_uuid(
     product_details = [
         OrderDetailItem(
             id_orders_details=detail.id_orders_details,  # Agregar el id_orders_details
+            product_id=detail.product_id,  # Agregar el product_id
             product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
             quantity=detail.quantity,
             unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+            descuento_details=detail.descuento_details if detail.descuento_details is not None else "0",  # Valor por defecto
             subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
             order_detail_status=detail.order_detail_status
         )
@@ -898,6 +956,7 @@ async def obtener_orden_por_uuid(
         state=db_order.state,
         order_status=db_order.order_status,
         products=product_details,
+        descuento=db_order.descuento if db_order.descuento is not None else 0.0,
         total=float(db_order.total) if db_order.total is not None else 0.0,
         metodo_pago=db_order.metodo_pago,
         ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible
@@ -939,6 +998,7 @@ async def dame_todas_las_ordenes(
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+                descuento_details=detail.descuento_details if detail.descuento_details is not None else "0",  # Valor por defecto
                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
                 order_detail_status=detail.order_detail_status  # Agregado para incluir el estado del detalle
             )
@@ -969,6 +1029,7 @@ async def dame_todas_las_ordenes(
             state=db_order.state,
             order_status=db_order.order_status,
             products=product_details,
+            descuento=db_order.descuento if db_order.descuento is not None else 0.0,
             total=float(db_order.total) if db_order.total is not None else 0.0,
             metodo_pago=db_order.metodo_pago,
             ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible
@@ -1012,6 +1073,7 @@ async def dame_ordenes_por_estado(
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
+                descuento_details=detail.descuento_details if detail.descuento_details is not None else "0",  # Valor por defecto
                 subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
                 order_detail_status=detail.order_detail_status,
                 id_orders_details=detail.id_orders_details  # Agregar id_orders_details
@@ -1041,6 +1103,7 @@ async def dame_ordenes_por_estado(
             state=db_order.state,
             order_status=db_order.order_status,
             products=product_details,
+            descuento=db_order.descuento if db_order.descuento is not None else 0.0,
             total=float(db_order.total) if db_order.total is not None else 0.0,
             metodo_pago=db_order.metodo_pago,
             ticket_number=db_order.ticket_number  # Incluir el ticket_number si está disponible

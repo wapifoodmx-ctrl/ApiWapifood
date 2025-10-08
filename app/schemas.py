@@ -126,6 +126,7 @@ class OrdersDetailsSchema(BaseModel):
     product_id: int
     quantity: int
     unit_price: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
+    descuento_details: Optional[str] = "0"  # Nuevo campo para descuento por detalle
     subtotal: Decimal  # Cambiar a Decimal para coincidir con OrdersDetails
     order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
@@ -160,6 +161,7 @@ class OrderCreateResponse(BaseModel):
     state: RoleOrders
     order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
+    descuento: Optional[str] = "0" 
     total: Decimal
     orderscol: str
     user_id: int
@@ -213,6 +215,7 @@ class Tables(BaseModel):
 
 class OrderDetailItem(BaseModel):
     id_orders_details: int | None = None  # Nuevo campo para id_orders_details
+    product_id: int
     product_name: str
     quantity: int
     unit_price: Decimal
@@ -551,6 +554,7 @@ class OrderDetailResponse(BaseModel):
     quantity: int
     unit_price: float = 0.0
     subtotal: float
+    descuento_details: Optional[str] = "0" 
     order_detail_status: OrderStatusEnum = OrderStatusEnum.Pendiente  # Nuevo campo
 
     class Config:
@@ -564,6 +568,7 @@ class OrdersResponse(BaseModel):
     state: RoleOrders  # Cambiado de str a RoleOrders
     order_status: OrderStatusEnum = OrderStatusEnum.Pendiente
     date_time: datetime
+    descuento: Optional[str] = "0"  # Nuevo campo
     total: Decimal  # Cambiado de float a Decimal para precisión
     orderscol: str
     user_id: Optional[int] = None
