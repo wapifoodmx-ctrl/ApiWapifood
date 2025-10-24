@@ -117,7 +117,7 @@ from typing import List, Dict
 import uvicorn
 
 # Rutas
-from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free
+from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router
 
 # Seguridad
 security = HTTPBasic()
@@ -144,6 +144,12 @@ app.include_router(analytics.router)
 app.include_router(tables.router)
 app.include_router(payments.router)
 app.include_router(free.router)
+# 3. Incluye el router en tu aplicación principal
+app.include_router(
+    chatbot_router.router,  # El objeto 'router' que definimos en el otro archivo
+    prefix="/api/chatbot",    # La URL base para todas las rutas de este router
+    tags=["Chatbot"]          # Agrupa estas rutas en la documentación
+)
 
 
 # Archivos estáticos

@@ -25,7 +25,8 @@ router = APIRouter(
     )
 
 # URL base del servidor para las imágenes
-BASE_URL = "https://api.wapifood.com"
+#BASE_URL = "https://api.wapifood.com"
+BASE_URL = "http://localhost:8000"
 #"https://api.wapifood.com"
 # Directorio donde se guardarán las imágenes
 UPLOAD_DIR = Path("app/static/uploads")

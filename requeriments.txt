@@ -3,7 +3,6 @@ uvicorn
 SQLAlchemy
 python-dotenv
 alembic
-passlib[bcrypt]
 python-jose[cryptograhpy]
 pymysql
 cryptography
@@ -14,9 +13,11 @@ requests
 fastapi[all]
 stripe
 pyotp
-stripe
 python-dateutil
 resend
 jinja2
 mercadopago
 tzdata
+resend
+passlib[bcrypt]
+bcrypt==4.1.3
