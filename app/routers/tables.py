@@ -92,72 +92,105 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 #---------------------------------------
 #---------------------------------------
 
+# --- MAPA CENTRALIZADO DE PLANES A MESAS ---
+# Esta debe ser la ÚNICA fuente de verdad para saber cuántas mesas tiene cada plan.
+# Usamos el nombre del plan (en minúsculas) tal como se guarda en la BD.
+PLAN_TO_TABLES_MAP = {
+    "inauguracion": 1,
+    "basico": 1,
+    "profesional": 16,
+    "empresarial": 26,
+    "basico_impresora": 1,
+    "restaurante_impresora": 16,
+    "plus_restaurante_impresora": 26
+}
+
 """
 Se agregó una condición payment.subscription_end_date and para asegurarse de que solo se realice la comparación si 
 subscription_end_date no es None. Si es None, la condición not payment ya manejará el caso de un pago inexistente o no válido.
 Esto evita el TypeError y permite que el endpoint funcione incluso si subscription_end_date no se ha establecido aún.
 
 """
-
 @router.post("/details", status_code=status.HTTP_201_CREATED,
-    description="Crea los detalles de mesas para un usuario basado en su suscripción."
+    description="Crea o actualiza los detalles de mesas para un usuario basado en su suscripción."
 )
-
-
 async def create_table_details(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Verificar la suscripción activa
+    # 1. Verificar la suscripción activa (lógica existente)
     payment = db.query(Payments).filter(
         Payments.user_id == current_user.id_users,
         Payments.status == "completed",
-        Payments.subscription_end_date.isnot(None)  # Asegura que subscription_end_date no sea None
-        ).order_by(Payments.date.desc()).first()
+        Payments.subscription_end_date.isnot(None)
+    ).order_by(Payments.date.desc()).first()
     
-    
-    # Verificar si hay un pago y si la suscripción está activa
     if not payment or (payment.subscription_end_date and payment.subscription_end_date < datetime.utcnow()):
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
-    print(f"Payment: {payment.__dict__ if payment else 'None'}")
 
-    # 2. Determinar el número de mesas según el plan
-    plan_mesas = {
-        "basico": 1,
-        "profesional": 16,
-        "empresarial": 26
-    }
-    mesas = plan_mesas.get(payment.plan, 0)
-    if mesas == 0:
-        raise HTTPException(status_code=400, detail="Plan no reconocido")
+    if not payment.plan:
+        raise HTTPException(status_code=400, detail="La suscripción activa no tiene un plan asociado.")
 
-    # 3. Verificar si ya existen detalles para este usuario
-    existing_details = db.query(TableDetails).filter(TableDetails.user_id == current_user.id_users).all()
-    if existing_details:
-        raise HTTPException(status_code=400, detail="Los detalles de mesas ya están creados para este usuario")
+    # 2. Determinar el número de mesas requeridas usando el MAPA CENTRAL
+    mesas_requeridas = PLAN_TO_TABLES_MAP.get(payment.plan.lower())
+    if mesas_requeridas is None:
+        raise HTTPException(status_code=400, detail=f"Plan '{payment.plan}' no reconocido en el mapa de mesas.")
 
-    # 4. Crear un registro por cada mesa
-    table_details = []
-    for i in range(1, mesas + 1):
-        detail = TableDetails(
-            user_id=current_user.id_users,
-            table_number=i,
-            estado=TablesEnum.Libre,
-            cantidad_ventas_por_mesa=0.0
-        )
-        table_details.append(detail)
+    try:
+        # 3. MODIFICADO: Lógica de "Actualizar/Insertar" (Upsert)
+        
+        # Obtenemos TODOS los detalles de mesas que este usuario haya tenido
+        todos_los_detalles = db.query(TableDetails).filter(
+            TableDetails.user_id == current_user.id_users
+        ).order_by(TableDetails.table_number).all()
+        
+        # Convertimos la lista en un diccionario para fácil acceso
+        # {1: <Objeto TableDetail 1>, 2: <Objeto TableDetail 2>, ...}
+        mapa_detalles = {d.table_number: d for d in todos_los_detalles}
+        
+        detalles_a_crear = []
+        
+        # --- Parte A: Activar o Crear las mesas necesarias ---
+        for i in range(1, mesas_requeridas + 1):
+            detalle_existente = mapa_detalles.get(i)
+            
+            if detalle_existente:
+                # La mesa ya existe, solo nos aseguramos de que esté activa
+                if not detalle_existente.is_active:
+                    detalle_existente.is_active = True
+            else:
+                # La mesa no existe, la creamos
+                nuevo_detalle = TableDetails(
+                    user_id=current_user.id_users,
+                    table_number=i,
+                    estado=TablesEnum.Libre,
+                    cantidad_ventas_por_mesa=0.0,
+                    is_active=True # Nace activa
+                )
+                detalles_a_crear.append(nuevo_detalle)
 
-    # 5. Guardar todos los detalles en la base de datos
-    db.add_all(table_details)
-    db.commit()
+        # --- Parte B: Desactivar las mesas sobrantes ---
+        for detalle in todos_los_detalles:
+            if detalle.table_number > mesas_requeridas:
+                if detalle.is_active:
+                    detalle.is_active = False # La desactivamos
 
-    return {"message": f"Se han creado {mesas} mesas para el usuario", "mesas": mesas}
+        # 5. Guardar todos los cambios
+        if detalles_a_crear:
+            db.add_all(detalles_a_crear)
+        
+        db.commit()
+
+        return {"message": f"Se han configurado {mesas_requeridas} mesas para el usuario", "mesas": mesas_requeridas}
+    
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al crear detalles de mesas: {str(e)}")
 
 #---------------------------------------
 #---------------------------------------
-
 @router.post("/generate", status_code=status.HTTP_201_CREATED,
-    description="Genera las mesas para un usuario basado en su suscripción activa."
+    description="Genera o actualiza las mesas (modelo principal) para un usuario basado en su suscripción activa."
 )
 async def generate_tables_sub(
     db: Session = Depends(get_db),
@@ -172,51 +205,70 @@ async def generate_tables_sub(
 
     if not payment:
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
+        
+    if not payment.plan:
+        raise HTTPException(status_code=400, detail="La suscripción activa no tiene un plan asociado.")
 
-    # 2. Determinar el número de mesas según el monto de la suscripción
-    subscription_mesas = {
-        100: 1,  # Plan 100 MXN = 1 mesa
-        200: 16, # Plan 200 MXN = 16 mesas
-        300: 26  # Plan 300 MXN = 26 mesas
-    }
-    mesas = subscription_mesas.get(payment.amount, 0)
-    if mesas == 0:
-        raise HTTPException(status_code=400, detail="Monto de suscripción no reconocido")
+    # 2. Determinar el número de mesas usando el MAPA CENTRAL
+    mesas_requeridas = PLAN_TO_TABLES_MAP.get(payment.plan.lower())
+    if mesas_requeridas is None:
+        raise HTTPException(status_code=400, detail=f"Plan '{payment.plan}' no reconocido en el mapa de mesas.")
 
-    # 3. Verificar si ya existen mesas para este usuario
-    existing_tables = db.query(TablesModel).filter(TablesModel.user_id == current_user.id_users).all()
-    if existing_tables:
-        raise HTTPException(status_code=400, detail="Las mesas ya están generadas para este usuario")
+    try:
+        # 3. Lógica de "Actualizar/Insertar" (Upsert)
+        todas_las_mesas = db.query(TablesModel).filter(
+            TablesModel.user_id == current_user.id_users
+        ).order_by(TablesModel.number).all()
+        
+        mapa_mesas = {m.number: m for m in todas_las_mesas}
+        
+        mesas_a_crear = []
+        
+        # --- Parte A: Activar o Crear las mesas necesarias ---
+        for i in range(1, mesas_requeridas + 1):
+            mesa_existente = mapa_mesas.get(i)
+            
+            if mesa_existente:
+                if not mesa_existente.is_active:
+                    mesa_existente.is_active = True
+            else:
+                nueva_mesa = TablesModel(
+                    number=i,
+                    capacity=4,  # Capacidad por defecto
+                    state=TablesEnum.Libre,
+                    user_id=current_user.id_users,
+                    subscription_amount=payment.amount, # Puedes mantener esto si lo usas
+                    is_active=True # Nace activa
+                )
+                mesas_a_crear.append(nueva_mesa)
 
-    # 4. Crear un registro por cada mesa
-    tables = []
-    for i in range(1, mesas + 1):
-        table = TablesModel(
-            number=i,
-            capacity=4,  # Valor por defecto de 4 personas (ajustable)
-            state=TablesEnum.Libre,
-            user_id=current_user.id_users,
-            subscription_amount=payment.amount
-            #subscription_amount=SubscriptionAmount(payment.amount)  # Asignar el monto de la suscripción
-        )
-        tables.append(table)
+        # --- Parte B: Desactivar las mesas sobrantes ---
+        for mesa in todas_las_mesas:
+            if mesa.number > mesas_requeridas:
+                if mesa.is_active:
+                    mesa.is_active = False # La desactivamos
 
-    # 5. Guardar todos los registros en la base de datos
-    db.add_all(tables)
-    db.commit()
+        # 5. Guardar todos los cambios
+        if mesas_a_crear:
+            db.add_all(mesas_a_crear)
+        
+        db.commit()
 
-    return {"message": f"Se han generado {mesas} mesas para el usuario", "mesas": mesas}
+        return {"message": f"Se han (re)generado {mesas_requeridas} mesas para el usuario", "mesas": mesas_requeridas}
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al generar mesas: {str(e)}")
 
 #---------------------------------------
 #---------------------------------------
-
 @router.get("/status", response_model=dict, status_code=status.HTTP_200_OK)
 def get_tables_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Devuelve la cantidad máxima de mesas y su estado para el usuario autenticado."""
-    # Obtener el número máximo de mesas basado en la suscripción
+    # 1. Obtener la suscripción
     payment = db.query(Payments).filter(
         Payments.user_id == current_user.id_users,
         Payments.status == "completed",
@@ -226,27 +278,27 @@ def get_tables_status(
     if not payment:
         raise HTTPException(status_code=403, detail="No tienes una suscripción activa o válida")
 
-    subscription_mesas = {
-        15.00: 1,
-        100.00: 1,
-        200.00: 16,
-        300.00: 26,
-        1960.00: 1,
-        2920.00: 16,
-        3880.00: 26
-    }
-    max_mesas = subscription_mesas.get(payment.amount, 0)
-    if max_mesas == 0:
-        raise HTTPException(status_code=400, detail="Monto de suscripción no reconocido")
+    if not payment.plan:
+        raise HTTPException(status_code=400, detail="La suscripción activa no tiene un plan asociado.")
 
-    # Obtener el estado de todas las mesas del usuario
-    tables = db.query(TablesModel).filter(TablesModel.user_id == current_user.id_users).all()
+    # 2. Usar el MAPA CENTRAL para max_mesas
+    max_mesas = PLAN_TO_TABLES_MAP.get(payment.plan.lower())
+    if max_mesas is None:
+        raise HTTPException(status_code=400, detail=f"Plan '{payment.plan}' no reconocido en el mapa de mesas.")
+
+    # 3. Obtener el estado de las mesas ACTIVAS
+    tables = db.query(TablesModel).filter(
+        TablesModel.user_id == current_user.id_users,
+        TablesModel.is_active == True  # <-- ¡EL FILTRO CLAVE!
+    ).all()
+    
     table_status = {table.number: table.state.value for table in tables}
 
     return {
         "max_mesas": max_mesas,
         "table_status": table_status
     }
+
 #---------------------------------------
 #---------------------------------------
 

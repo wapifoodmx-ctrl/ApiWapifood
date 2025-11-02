@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey, Float, Boolean
+import sqlalchemy as sa
 from sqlalchemy.types import DECIMAL as Decimal  # 🛠️ Corrección
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql.schema import ForeignKey
@@ -204,6 +205,8 @@ class Tables(Base):
     user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False) 
     #subscription_amount = Column(SQLAlchemyEnum(SubscriptionAmount), nullable=False)  # Monto de la suscripción
     subscription_amount = Column(Integer, nullable=False)
+    # --- ¡AGREGA ESTA LÍNEA! ---
+    is_active = Column(Boolean, default=True, nullable=False, server_default=sa.text('1'))
     # Relaciones
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
@@ -219,6 +222,8 @@ class TableDetails(Base):
     table_number = Column(Integer, nullable=False)  # Número de la mesa (1, 2, ..., 26)
     estado = Column(SQLAlchemyEnum(TablesEnum), nullable=False, default=TablesEnum.Libre)  # Estado de la mesa
     cantidad_ventas_por_mesa = Column(Float, nullable=False, default=0.0)  # Cantidad de ventas por mesa
+    # --- ¡ESTA ES LA COLUMNA QUE NECESITAS AGREGAR! ---
+    is_active = Column(Boolean, default=True, nullable=False)
     
     # Relaciones
     table = relationship("Tables", back_populates="table_details")
