@@ -215,7 +215,7 @@ class Tables(BaseModel):
 
 class OrderDetailItem(BaseModel):
     id_orders_details: int | None = None  # Nuevo campo para id_orders_details
-    product_id: int
+    product_id: Optional[int] = None
     product_name: str
     quantity: int
     unit_price: Decimal
