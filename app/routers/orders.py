@@ -1384,6 +1384,7 @@ async def dame_todas_las_ordenes_de_las_ultimas_24_horas(
         product_details = [
             OrderDetailItem(
                 id_orders_details=detail.id_orders_details,  # Agregar id_orders_details
+                product_id=detail.product_id,
                 product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
                 quantity=detail.quantity,
                 unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
