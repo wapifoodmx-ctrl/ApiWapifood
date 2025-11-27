@@ -317,7 +317,8 @@ def obtener_info_por_uuid(user_uuid: str, db: Session) -> Optional[UserInfoByUUI
         codigo_postal=user_info.codigo_postal,
         ciudad=user_info.ciudad,
         alcaldia=user_info.alcaldia,
-        codigo_confirmacion=user_info.codigo_confirmacion  # Nuevo campo opcional
+        horario=user_info.horario
+        #codigo_confirmacion=user_info.codigo_confirmacion  # Nuevo campo opcional
     )
 
 
