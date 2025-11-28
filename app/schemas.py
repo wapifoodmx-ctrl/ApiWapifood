@@ -463,7 +463,8 @@ class UserInfoByUUIDResponse(BaseModel):
     codigo_postal: Optional[int] = None
     ciudad: Optional[str] = None
     alcaldia: Optional[str] = None
-    codigo_confirmacion: Optional[str] = None
+    #codigo_confirmacion: Optional[str] = None
+    horario: Optional[str] = None
 
     class Config:
         from_attributes = True
