@@ -10,6 +10,7 @@ from app.schemas import PlanType
 from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount, OrderStatusEnum
 from datetime import datetime
 import uuid
+from sqlalchemy import UniqueConstraint
 
 
 """
@@ -172,7 +173,7 @@ class Orders(Base):
     state = Column(SQLAlchemyEnum(RoleOrders), nullable=False)
     order_status = Column(String(20), SQLAlchemyEnum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.Pendiente)  # Nuevo campo para el estado del pedido
     date_time = Column(DateTime)
-    total = Column(Decimal)
+    total = Column(Decimal(10, 2), default=0.00)
     orderscol = Column(String(50))
     product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
@@ -327,3 +328,31 @@ class OrderAnalytics(Base):
 
     # Relación inversa
     user = relationship("User", back_populates="order_analytics")
+
+
+class Menucolors(Base):
+    __tablename__ = "Menucolors"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # ⚠️ Quitamos unique=True global de aquí
+    key = Column(String(255), nullable=False, index=True) 
+    
+    value = Column(String(1000), nullable=True)
+    description = Column(String(500), nullable=True)
+    group = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 🆕 AGREGAR RELACIÓN CON USUARIO
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)
+    
+    # Relación inversa (opcional, pero recomendada)
+    user = relationship("User") 
+
+    # 🔒 RESTRICCIÓN COMPUESTA:
+    # La combinación (user_id + key) debe ser única.
+    # Así, el usuario 1 puede tener "color" y el usuario 2 también puede tener "color".
+    __table_args__ = (
+        UniqueConstraint('user_id', 'key', name='uix_user_key'),
+    )

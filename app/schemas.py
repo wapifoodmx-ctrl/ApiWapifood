@@ -705,3 +705,26 @@ class EmailVerificationResponse(BaseModel):
     token: str
     user_uuid: str
     message: str
+
+
+class MenucolorsBase(BaseModel):
+    key: str
+    value: Optional[str] = None
+    description: Optional[str] = None
+    group: Optional[str] = None
+
+class MenucolorsCreate(MenucolorsBase):
+    pass
+
+class MenucolorsUpdate(BaseModel):
+    value: Optional[str] = None
+    description: Optional[str] = None
+    group: Optional[str] = None
+
+class MenucolorsResponse(MenucolorsBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        orm_mode = True
