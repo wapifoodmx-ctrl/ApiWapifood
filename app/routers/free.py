@@ -180,7 +180,7 @@ async def activate_plan(
     # --- FIN DE MODIFICACIÓN ---
 
     # 1. Buscar el user_id (misma lógica que antes)
-    query_user = text("SELECT id_users FROM mydb.users WHERE email = :email")
+    query_user = text("SELECT id_users FROM wapifood.users WHERE email = :email")
     result = db.execute(query_user, {"email": input.email}).fetchone()
     if not result:
         raise HTTPException(status_code=400, detail=f"No se encontró un usuario con el correo {input.email}")
@@ -196,7 +196,7 @@ async def activate_plan(
 
     # 3. Preparar la consulta SQL (la consulta no cambia)
     query = text("""
-    INSERT INTO mydb.payments (
+    INSERT INTO wapifood.payments (
         payment_method, amount, date, user_id, plan, subscription_id,
         status, checkout_session_id, email, subscription_end_date,
         mercado_pago_customer_id, mercado_pago_payment_id,

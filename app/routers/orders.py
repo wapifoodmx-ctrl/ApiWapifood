@@ -267,6 +267,279 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 
 #------------------------------------------
 #------------------------------------------
+# @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
+#     description="Crea una nueva orden o añade productos a una orden existente para una mesa especificada. La mesa con número 1 siempre permanece en estado Libre y sus órdenes inician como PuntoDeVenta. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa (no finalizada ni cancelada).")
+# async def crear_orden(
+#     product_ids: str = Form(..., description="Lista de IDs de productos separados por comas (ejemplo: '1,2,3')"),
+#     quantities: str = Form(..., description="Lista de cantidades separadas por comas (ejemplo: '4,2,1')"),
+#     descuento: str = Form("0", description="Descuento aplicado al total, en formato de cadena (ejemplo: '10%', '5.00')"),
+#     descuento_details: str = Form("0", description="Descuento aplicado a la orden_detail, en formato de cadena (ejemplo: '10%', '5.00')"),
+#     table_number: int = Form(..., description="Número de la mesa a asignar a la orden (la mesa con número 1 siempre permanece disponible)"),
+#     metodo_pago: PaymentMethodEnum = Form(PaymentMethodEnum.efectivo, description="Método de pago de la orden (efectivo, tarjeta, pasarela)"),
+#     order_uuid: str = Form(None, description="UUID opcional para identificar la orden; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa."),
+#     db: Session = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     token: str = Depends(oauth2_scheme)
+
+# ):
+#     logging.basicConfig(level=logging.DEBUG)
+
+#     # 1. Parsear las listas de product_ids y quantities
+#     try:
+#         product_ids_list = [int(pid) for pid in product_ids.split(",")]
+#         quantities_list = [int(qty) for qty in quantities.split(",")]
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="Los product_ids y quantities deben ser listas de números enteros separados por comas")
+    
+#         # Validar descuento de la orden
+#     if "%" in descuento:
+#         try:
+#             valor = float(descuento.replace("%", ""))
+#         except ValueError:
+#             raise HTTPException(status_code=400, detail="El descuento porcentual debe ser un número válido")
+#         if valor < 0 or valor > 100:
+#             raise HTTPException(status_code=400, detail="El descuento porcentual debe estar entre 0% y 100%")
+#     else:
+#         try:
+#             valor = float(descuento)
+#         except ValueError:
+#             raise HTTPException(status_code=400, detail="El descuento debe ser un número válido")
+#         if valor < 0:
+#             raise HTTPException(status_code=400, detail="El descuento no puede ser menor a 0")
+
+#     # Validar descuento_details para cada producto
+#     descuento_details_list = descuento_details.split(",")
+#     if len(descuento_details_list) != len(product_ids.split(",")):
+#         raise HTTPException(status_code=400, detail="El número de descuentos por detalle debe coincidir con el número de productos")
+
+#     # Validar cada descuento_details
+#     for idx, desc_det in enumerate(descuento_details_list):
+#         desc_det = desc_det.strip()
+#         if "%" in desc_det:
+#             try:
+#                 valor_det = float(desc_det.replace("%", ""))
+#             except ValueError:
+#                 raise HTTPException(status_code=400, detail=f"El descuento porcentual del detalle debe ser válido en el producto {product_ids_list[idx]}")
+#             if valor_det < 0 or valor_det > 100:
+#                 raise HTTPException(status_code=400, detail=f"El descuento porcentual del detalle debe estar entre 0% y 100% en el producto {product_ids_list[idx]}")
+#         else:
+#             try:
+#                 valor_det = float(desc_det)
+#             except ValueError:
+#                 raise HTTPException(status_code=400, detail=f"El descuento del detalle debe ser válido en el producto {product_ids_list[idx]}")
+#             if valor_det < 0:
+#                 raise HTTPException(status_code=400, detail=f"El descuento del detalle no puede ser menor a 0 en el producto {product_ids_list[idx]}")
+
+#     # 2. Validar que las listas tengan la misma longitud
+#     if len(product_ids_list) != len(quantities_list):
+#         raise HTTPException(status_code=400, detail="El número de product_ids y quantities debe ser igual")
+#     if not product_ids_list:
+#         raise HTTPException(status_code=400, detail="Debe proporcionar al menos un producto")
+
+#     # 3. Validar las cantidades
+#     for qty in quantities_list:
+#         if qty <= 0:
+#             raise HTTPException(status_code=400, detail="Todas las cantidades deben ser mayores que 0")
+
+#     # 4. Validar la suscripción activa
+#     payment = db.query(Payments).filter(
+#         Payments.user_id == current_user.id_users,
+#         Payments.status == PaymentStatus.COMPLETED,
+#         Payments.subscription_end_date >= datetime.now()
+#     ).order_by(Payments.date.desc()).first()
+#     if not payment:
+#         raise HTTPException(status_code=403, detail="No tienes una suscripción activa")
+
+#     logging.debug(f"payment.amount: {payment.amount}, type: {type(payment.amount)}")
+
+#     # 5. Determinar el número máximo de mesas según el monto de la suscripción
+#     subscription_mesas = {
+#         SubscriptionAmount.PLAN_INAUGURACION.value: 1,
+#         SubscriptionAmount.PLAN_100.value: 1,
+#         SubscriptionAmount.PLAN_200.value: 16,
+#         SubscriptionAmount.PLAN_300.value: 26,
+#         SubscriptionAmount.BASICO_IMPRESORA.value: 1,  # Ajusta según tu lógica
+#         SubscriptionAmount.RESTAURANTE_IMPRESORA.value: 16,  # Ajusta según tu lógica
+#         SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA.value: 26  # Ajusta según tu lógica
+#     }
+#     try:
+#         amount_float = float(payment.amount) if payment.amount else 0.0
+#     except (TypeError, ValueError) as e:
+#         logging.error(f"Error convirtiendo payment.amount: {payment.amount}, error: {str(e)}")
+#         raise HTTPException(status_code=500, detail="Error interno al procesar el monto de la suscripción")
+#     max_mesas = subscription_mesas.get(amount_float, 0)
+#     logging.debug(f"amount_float: {amount_float}, max_mesas: {max_mesas}")
+#     if max_mesas == 0:
+#         raise HTTPException(status_code=400, detail=f"Monto de suscripción no reconocido: {amount_float}")
+#     if table_number < 1 or table_number > max_mesas:
+#         raise HTTPException(status_code=400, detail=f"El número de mesa debe estar entre 1 y {max_mesas}")
+
+#     # 6. Verificar que la mesa exista y pertenezca al usuario autenticado
+#     db_table = db.query(TablesModel).filter(
+#         TablesModel.number == table_number,
+#         TablesModel.user_id == current_user.id_users
+#     ).first()
+#     if not db_table:
+#         raise HTTPException(status_code=404, detail=f"Mesa con número {table_number} no encontrada o no te pertenece")
+
+#     # 7. Determinar el order_uuid y manejar órdenes existentes
+#     existing_order = None
+#     if order_uuid:
+#         try:
+#             UUID(order_uuid)
+#         except ValueError:
+#             raise HTTPException(status_code=400, detail="El order_uuid proporcionado no es válido")
+#         existing_orders = db.query(OrdersModel).filter(
+#             OrdersModel.order_uuid == order_uuid,
+#             OrdersModel.user_id == current_user.id_users
+#         ).all()
+#         for order in existing_orders:
+#             if order.order_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail=f"El order_uuid {order_uuid} corresponde a una orden finalizada o cancelada y no puede ser reutilizado"
+#                 )
+#             if order.mesa_id != db_table.id_tables:
+#                 raise HTTPException(status_code=400, detail="El order_uuid proporcionado ya está en uso para otra mesa")
+#             if order.order_status not in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
+#                 existing_order = order  # Encontramos una orden activa
+
+#     if not order_uuid or order_uuid == "":
+#         if db_table.state == TablesEnum.Ocupado and table_number != 1:
+#             latest_order = db.query(OrdersModel).filter(
+#                 OrdersModel.mesa_id == db_table.id_tables,
+#                 OrdersModel.order_status.notin_([OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado])
+#             ).order_by(OrdersModel.date_time.desc()).first()
+#             if latest_order:
+#                 order_uuid = latest_order.order_uuid
+#                 existing_order = latest_order
+#             else:
+#                 order_uuid = str(uuid4())
+#         else:
+#             order_uuid = str(uuid4())
+
+#     # 8. Verificar que los productos existan y pertenezcan al usuario autenticado
+#     products = []
+#     total_order = 0.0
+#     product_names = []
+#     for product_id in product_ids_list:
+#         db_product = db.query(ProductsModel).filter(ProductsModel.id_products == product_id).first()
+#         if not db_product:
+#             raise HTTPException(status_code=404, detail=f"Producto con ID {product_id} no encontrado")
+#         if db_product.owner_id != current_user.id_users:
+#             raise HTTPException(status_code=403, detail=f"No tienes permiso para crear una orden para el producto con ID {product_id}")
+#         products.append(db_product)
+#         product_names.append(db_product.name)
+#     # 9. Calcular el total de los nuevos productos aplicando descuento_details
+#     new_total = 0.0
+#     subtotals = []
+#     for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
+#         unit_price = float(db_product.price)
+#         subtotal = qty * unit_price
+
+#         # Aplicar descuento_details al subtotal
+#         desc_det = descuento_details_list[idx].strip()
+#         if "%" in desc_det:
+#             valor_det = float(desc_det.replace("%", ""))
+#             descuento_aplicado = subtotal * (valor_det / 100)
+#         else:
+#             descuento_aplicado = float(desc_det)
+#         subtotal -= descuento_aplicado
+#         if subtotal < 0:
+#             subtotal = 0.0
+
+#         subtotals.append(subtotal)
+#         new_total += subtotal
+
+#     # Aplicar descuento general al total
+#     if descuento and descuento != "0":
+#         if "%" in descuento:
+#             valor = float(descuento.replace("%", ""))
+#             descuento_aplicado = new_total * (valor / 100)
+#         else:
+#             descuento_aplicado = float(descuento)
+#         new_total -= descuento_aplicado
+#         if new_total < 0:
+#             new_total = 0.0
+
+#     # 10. Si existe una orden activa, actualizarla; si no, crear una nueva
+#     if existing_order:
+#         existing_order.total = float(existing_order.total or 0.0) + new_total
+#         existing_order.product_name = ", ".join(
+#             list(set(existing_order.product_name.split(", ") + product_names)) if existing_order.product_name else product_names
+#         )
+#         existing_order.date_time = datetime.now()
+#         existing_order.metodo_pago = metodo_pago
+
+#         # Añadir los nuevos detalles con descuento_details aplicado al subtotal
+#         for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
+#             unit_price = float(db_product.price)
+#             subtotal = subtotals[idx]
+#             db.add(OrdersDetailsModel(
+#                 order_id=existing_order.id_orders,
+#                 product_id=db_product.id_products,
+#                 quantity=qty,
+#                 unit_price=unit_price,
+#                 subtotal=subtotal,
+#                 order_detail_status=OrderStatusEnum.Pendiente,
+#                 descuento_details=descuento_details_list[idx].strip()
+#             ))
+#         db.flush()
+#         db.add(existing_order)
+#     else:
+#         initial_status = OrderStatusEnum.PuntoDeVenta if table_number == 1 else OrderStatusEnum.Pendiente
+#         db_order = OrdersModel(
+#             mesa_id=db_table.id_tables,
+#             state=RoleOrders.Ocupado if table_number != 1 else RoleOrders.Libre,
+#             order_status=initial_status,
+#             date_time=datetime.now(),
+#             descuento=descuento,
+#             total=new_total,
+#             orderscol="Orden creada manualmente",
+#             product_name=", ".join(product_names),
+#             user_id=current_user.id_users,
+#             order_uuid=order_uuid,
+#             metodo_pago=metodo_pago
+#         )
+#         db.add(db_order)
+
+#         if db_table.number != 1 and db_table.state == TablesEnum.Libre:
+#             db_table.state = TablesEnum.Ocupado
+
+#         db.commit()
+#         db.refresh(db_order)
+
+#         # Crear los detalles de pedido con descuento_details aplicado al subtotal
+#         for idx, (db_product, qty) in enumerate(zip(products, quantities_list)):
+#             unit_price = float(db_product.price)
+#             subtotal = subtotals[idx]
+#             db_order_detail = OrdersDetailsModel(
+#                 order_id=db_order.id_orders,
+#                 product_id=db_product.id_products,
+#                 quantity=qty,
+#                 unit_price=unit_price,
+#                 descuento_details=descuento_details_list[idx].strip(),
+#                 subtotal=subtotal,
+#                 order_detail_status=OrderStatusEnum.Pendiente,
+#             )
+#             db.add(db_order_detail)
+
+#     db.commit()
+#     db.refresh(db_table)
+
+#     # 11. Refrescar la orden para la respuesta y actualizar estado final
+#     db_order = existing_order or db_order
+#     db.refresh(db_order)
+
+#     # 12. Crear respuesta con el número de mesa
+#     order_response = OrderCreateResponse.from_orm(db_order)
+#     order_response.mesa_id = db_order.mesa_id
+#     order_response.mesa_number = db_table.number
+#     order_response.order_uuid = db_order.order_uuid
+
+#     return order_response
+
+
 @router.post("/", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED,
     description="Crea una nueva orden o añade productos a una orden existente para una mesa especificada. La mesa con número 1 siempre permanece en estado Libre y sus órdenes inician como PuntoDeVenta. El order_uuid es opcional; si no se proporciona o se envía vacío, se genera uno único. Para pedidos adicionales de la misma mesa, usa el mismo UUID solo si la orden está activa (no finalizada ni cancelada).")
 async def crear_orden(
@@ -291,6 +564,11 @@ async def crear_orden(
     except ValueError:
         raise HTTPException(status_code=400, detail="Los product_ids y quantities deben ser listas de números enteros separados por comas")
     
+    # --- INICIO DE LA MODIFICACIÓN ---
+    # Guardar el número de productos para validaciones posteriores
+    num_productos = len(product_ids_list)
+    # --- FIN DE LA MODIFICACIÓN ---
+    
         # Validar descuento de la orden
     if "%" in descuento:
         try:
@@ -307,10 +585,21 @@ async def crear_orden(
         if valor < 0:
             raise HTTPException(status_code=400, detail="El descuento no puede ser menor a 0")
 
+    # --- INICIO DE LA MODIFICACIÓN ---
     # Validar descuento_details para cada producto
-    descuento_details_list = descuento_details.split(",")
-    if len(descuento_details_list) != len(product_ids.split(",")):
-        raise HTTPException(status_code=400, detail="El número de descuentos por detalle debe coincidir con el número de productos")
+    descuento_details_list = [] # Inicializar lista
+
+    # Si el usuario envía "0" (default) o "" (empty value), creamos una lista de ceros
+    if descuento_details == "0" or descuento_details == "":
+        descuento_details_list = ["0"] * num_productos
+    else:
+        # Si envía valores específicos (ej. "10,0,5%"), los separamos
+        descuento_details_list_temp = descuento_details.split(",")
+        # Y validamos que la longitud coincida con el número de productos
+        if len(descuento_details_list_temp) != num_productos:
+            raise HTTPException(status_code=400, detail="El número de descuentos por detalle debe coincidir con el número de productos")
+        descuento_details_list = descuento_details_list_temp
+    # --- FIN DE LA MODIFICACIÓN ---
 
     # Validar cada descuento_details
     for idx, desc_det in enumerate(descuento_details_list):
@@ -430,6 +719,7 @@ async def crear_orden(
             raise HTTPException(status_code=403, detail=f"No tienes permiso para crear una orden para el producto con ID {product_id}")
         products.append(db_product)
         product_names.append(db_product.name)
+        
     # 9. Calcular el total de los nuevos productos aplicando descuento_details
     new_total = 0.0
     subtotals = []

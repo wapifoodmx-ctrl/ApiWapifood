@@ -50,7 +50,7 @@ def crear_usuario(usuario: User, db: Session = Depends(get_db)):
 @router.post('/{user_id}', status_code=status.HTTP_200_OK)  # Post para obtener el usuario a partir del id
 def obtener_usuario(user_id: int, db: Session = Depends(get_db)):
     usuario = user.obtener_usuario(user_id, db)
-    return {"mensaje": "Usuario no encontrado"}
+    return usuario
 
 
 @router.delete('/{user_id}', status_code=status.HTTP_200_OK)
@@ -179,7 +179,7 @@ def obtener_codigo_confirmacion_por_id(
     Obtiene el código de confirmación del usuario autenticado.
     """
     codigo = user_repo.obtener_codigo_confirmacion_por_id(current_user.id_users, db)
-    if codigo is None and not db.query(User).filter(User.id_users == current_user.id_users).first():
+    if codigo is None and not db.query(UserModel).filter(UserModel.id_users == current_user.id_users).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     if codigo is None and not db.query(UserInfo).filter(UserInfo.user_id == current_user.id_users).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Información de usuario no encontrada")
