@@ -10,6 +10,7 @@ from app.schemas import PlanType
 from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, StatusEnum, PlanType, PaymentStatus, SubscriptionAmount, OrderStatusEnum
 from datetime import datetime
 import uuid
+from sqlalchemy import UniqueConstraint
 
 
 """
@@ -172,7 +173,7 @@ class Orders(Base):
     state = Column(SQLAlchemyEnum(RoleOrders), nullable=False)
     order_status = Column(String(20), SQLAlchemyEnum(OrderStatusEnum), nullable=False, default=OrderStatusEnum.Pendiente)  # Nuevo campo para el estado del pedido
     date_time = Column(DateTime)
-    total = Column(Decimal)
+    total = Column(Decimal(10, 2), default=0.00)
     orderscol = Column(String(50))
     product_name = Column(String(1500))
     user_id = Column(Integer, ForeignKey("users.id_users"))  # Agregar clave foránea
@@ -327,3 +328,16 @@ class OrderAnalytics(Base):
 
     # Relación inversa
     user = relationship("User", back_populates="order_analytics")
+
+
+class Menucolors(Base):
+    __tablename__ = "Menucolors"
+
+    # Columna 1: El ID del usuario (Es Clave Primaria y Foránea a la vez)
+    user_id = Column(Integer, ForeignKey("users.id_users"), primary_key=True)
+    
+    # Columna 2: El color
+    color = Column(String(20), nullable=False) # Ej: "#000000"
+
+    # Relación
+    user = relationship("User")

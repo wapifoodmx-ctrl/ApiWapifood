@@ -705,3 +705,16 @@ class EmailVerificationResponse(BaseModel):
     token: str
     user_uuid: str
     message: str
+
+
+# Schema para recibir datos (POST/PUT)
+class MenucolorRequest(BaseModel):
+    color: str
+
+# Schema para responder (GET)
+class MenucolorResponse(BaseModel):
+    user_id: int
+    color: str
+
+    class Config:
+        from_attributes = True

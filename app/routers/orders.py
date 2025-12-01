@@ -1239,7 +1239,7 @@ async def obtener_orden_por_uuid(
     # Construir la respuesta
     response = OrderDetailsByUUIDResponse(
         id_orders=db_order.id_orders,
-        mesa_number=db_order.mesa_id,  
+        mesa_number=mesa_number, 
         restaurant_name=restaurant_name,
         order_uuid=db_order.order_uuid,
         date_time=db_order.date_time,
