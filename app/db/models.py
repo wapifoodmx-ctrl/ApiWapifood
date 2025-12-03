@@ -331,7 +331,7 @@ class OrderAnalytics(Base):
 
 
 class Menucolors(Base):
-    __tablename__ = "Menucolors"
+    __tablename__ = "menucolors"
 
     # Columna 1: El ID del usuario (Es Clave Primaria y Foránea a la vez)
     user_id = Column(Integer, ForeignKey("users.id_users"), primary_key=True)
