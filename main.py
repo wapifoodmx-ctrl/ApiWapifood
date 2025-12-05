@@ -115,6 +115,9 @@ from fastapi.openapi.utils import get_openapi
 from starlette.datastructures import FormData
 from typing import List, Dict
 import uvicorn
+import httpx # Asegúrate de tener esto importado
+import logging
+from starlette.responses import Response
 
 # Rutas
 from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router, menucolors
@@ -213,6 +216,68 @@ def openapi(credentials: HTTPBasicCredentials = Depends(security)):
         version="1.0.0",
         routes=app.routes,
     )
+
+
+# AGREGAR ESTO PARA VER LAS RUTAS AL INICIAR
+@app.on_event("startup")
+def startup_event():
+    print("\n" + "="*50)
+    print("RUTAS REGISTRADAS EN EL SERVIDOR:")
+    for route in app.routes:
+        if hasattr(route, "methods"):
+            print(f"{route.path}  -> {route.methods}")
+    print("="*50 + "\n")
+
+
+
+# Configuración del Gateway para el microservicio de Inventarios pruebas 
+INVENTORY_SERVICE_URL = "https://api-micro.wapifood.com"
+
+@app.api_route("/inventory/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
+async def inventory_gateway(path: str, request: Request):
+    """
+    Actúa como pasarela (Gateway):
+    Recibe la petición en puerto 8000 y la manda al puerto 8001 (Inventario).
+    """
+    # Construimos la URL destino: http://127.0.0.1:8001/inventory/recipes/
+    target_url = f"{INVENTORY_SERVICE_URL}/inventory/{path}"
+    
+    logging.info(f"🔄 Redirigiendo a Microservicio: {target_url}")
+
+    async with httpx.AsyncClient() as client:
+        # Copiamos headers (como el Token de autorización)
+        # Excluimos 'host' y 'content-length' para que httpx los recalcule
+        headers = {
+            k: v for k, v in request.headers.items() 
+            if k.lower() not in ("host", "content-length")
+        }
+
+        # Leemos el cuerpo (body) de la petición original
+        body = await request.body()
+
+        try:
+            # Enviamos la petición al microservicio
+            response = await client.request(
+                method=request.method,
+                url=target_url,
+                headers=headers,
+                params=request.query_params,
+                content=body
+            )
+            
+            # Devolvemos la respuesta del microservicio al cliente original
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=dict(response.headers)
+            )
+            
+        except httpx.ConnectError:
+            # Si el microservicio 8001 está apagado
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "El servicio de Inventarios no está disponible en este momento."}
+            )
 
 # Ejecutar la app  y abre: http://localhost:8000/secret-docs
 if __name__ == "__main__":

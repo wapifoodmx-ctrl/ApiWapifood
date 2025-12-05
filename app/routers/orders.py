@@ -16,6 +16,7 @@ from app.repository.auth import get_current_user
 from decimal import Decimal
 from datetime import datetime,  timedelta
 import random
+from sqlalchemy import desc
 
 router = APIRouter(
     prefix="/orders",
@@ -986,11 +987,12 @@ def dame_resumen_orders(
 #------------------------------------------
 #------------------------------------------
 
+
 # @router.put("/orders/{order_uuid}/cambio_estatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 # async def finalizar_orden(
 #     order_uuid: str,
 #     order_status: OrderStatusEnum,
-#     metodo_pago: PaymentMethodEnum,  # Nuevo parámetro para cambiar el método de pago
+#     metodo_pago: PaymentMethodEnum,
 #     db: Session = Depends(get_db),
 #     current_user: User = Depends(get_current_user)
 # ):
@@ -1020,10 +1022,41 @@ def dame_resumen_orders(
 #         if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
 #             raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
 
+#     # 🆕 Obtener el siguiente número de ticket solo si el estado es "Finalizado"
+#     ticket_number = None
+#     if order_status == OrderStatusEnum.Finalizado:
+#         # Verificar si alguna orden ya tiene un ticket_number asignado
+#         existing_ticket = None
+#         for order in db_orders:
+#             if order.ticket_number is not None:
+#                 existing_ticket = order.ticket_number
+#                 break
+        
+#         if existing_ticket:
+#             # Usar el ticket existente
+#             ticket_number = existing_ticket
+#         else:
+#             # Obtener el último ticket_number del usuario
+#             last_ticket = db.query(OrdersModel).filter(
+#                 OrdersModel.user_id == current_user.id_users,
+#                 OrdersModel.ticket_number.is_not(None)
+#             ).order_by(OrdersModel.ticket_number.desc()).first()
+            
+#             # Calcular el siguiente número de ticket
+#             if last_ticket and last_ticket.ticket_number:
+#                 ticket_number = int(last_ticket.ticket_number) + 1
+#             else:
+#                 ticket_number = 1  # Primer ticket para este usuario
+                
 #     # Actualizar el estado y el método de pago de todas las órdenes
 #     for order in db_orders:
 #         order.order_status = order_status
-#         order.metodo_pago = metodo_pago  # Actualizar el método de pago
+#         order.metodo_pago = metodo_pago
+
+#         # 🆕 Asignar el número de ticket solo si la orden se finaliza
+#         if order_status == OrderStatusEnum.Finalizado:
+#             order.ticket_number = ticket_number
+
 #         db.add(order)
 
 #         # Si la orden se finaliza, actualizar todos los detalles a Finalizado
@@ -1032,20 +1065,22 @@ def dame_resumen_orders(
 #                 OrdersDetailsModel.order_id == order.id_orders
 #             ).all()
 #             for detail in order_details:
-#                 if detail.order_detail_status != OrderStatusEnum.Finalizado or detail.order_detail_status != OrderStatusEnum.Cancelado:
+#                 if detail.order_detail_status not in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
 #                     detail.order_detail_status = OrderStatusEnum.Finalizado
 #                     db.add(detail)
         
-#         # Si la orden se canela, cancela todo los detalles
+#         # Si la orden se cancela, cancela todos los detalles y establece todos los precios en 0 
 #         if order_status == OrderStatusEnum.Cancelado:
+#             order.total = Decimal(0.00)
 #             order_details = db.query(OrdersDetailsModel).filter(
 #                 OrdersDetailsModel.order_id == order.id_orders
 #             ).all()
 #             for detail in order_details:
 #                 detail.order_detail_status = OrderStatusEnum.Cancelado
+#                 detail.unit_price = 0.0  # Establecer el precio unitario a 0
+#                 detail.subtotal = 0.0
+#                 detail.quantity = 0  # Establecer la cantidad a 0
 #                 db.add(detail)
-
-    
 
 #     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
 #     if order_status == OrderStatusEnum.Finalizado and db_table.number != 1:
@@ -1059,11 +1094,16 @@ def dame_resumen_orders(
 
 #     return OrderFinalizeResponse(
 #         message=f"Cambio de estado y método de pago de {len(db_orders)} orden(es) realizado con éxito",
-#         order_id=db_orders[0].id_orders,  # Usar la primera orden para la respuesta
+#         order_id=db_orders[0].id_orders,
 #         mesa_id=mesa_id,
 #         order_status=order_status,
-#         mesa_state=db_table.state
+#         mesa_state=db_table.state,
+#         ticket_number=ticket_number
+#         #codigo_confirmacion=db_orders[0].codigo_confirmacion
 #     )
+
+
+
 
 @router.put("/orders/{order_uuid}/cambio_estatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 async def finalizar_orden(
@@ -1148,6 +1188,7 @@ async def finalizar_orden(
         
         # Si la orden se cancela, cancela todos los detalles y establece todos los precios en 0 
         if order_status == OrderStatusEnum.Cancelado:
+            order.total = Decimal(0.00)
             order_details = db.query(OrdersDetailsModel).filter(
                 OrdersDetailsModel.order_id == order.id_orders
             ).all()
@@ -1963,3 +2004,110 @@ async def dame_todas_las_ordenes_entre_fechas_establecidas(
         responses.append(response)
 
     return responses
+
+#------------------------------------------ mostrar ultimos pedidos 
+
+
+# Mapa de planes basado en tu archivo payments.py y tu solicitud anterior
+PLAN_TO_TABLES_MAP = {
+    "inauguracion": 1,
+    "basico": 1,
+    "profesional": 16,
+    "empresarial": 26,
+    "basico_impresora": 1,
+    "restaurante_impresora": 16,
+    "plus_restaurante_impresora": 26
+}
+
+@router.get("/orders/latest-by-plan", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
+def get_latest_orders_by_plan(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene las últimas órdenes permitidas según el plan ACTIVO en Payments.
+    Excluye la Mesa 1 y limita la cantidad a (Total Mesas Plan - 1).
+    """
+
+    # 1. Obtener el Plan Activo desde la tabla Payments
+    current_time = datetime.utcnow()
+    
+    active_payment = (
+        db.query(Payments)
+        .filter(
+            Payments.user_id == current_user.id_users,
+            Payments.status == PaymentStatus.COMPLETED,
+            Payments.subscription_end_date > current_time
+        )
+        .order_by(desc(Payments.date))
+        .first()
+    )
+
+    # 2. Determinar el nombre del plan
+    if active_payment:
+        # Si 'plan' es un objeto Enum, obtenemos su valor (.value), si es string lo usamos directo
+        user_plan_name = active_payment.plan.value if hasattr(active_payment.plan, "value") else active_payment.plan
+    else:
+        user_plan_name = "basico"
+    
+    # 3. Calcular el límite
+    total_tables_allowed = PLAN_TO_TABLES_MAP.get(user_plan_name, 1)
+    query_limit = total_tables_allowed - 1
+    
+    # Debug
+    # print(f"Plan: {user_plan_name} | Límite: {query_limit}")
+
+    if query_limit <= 0:
+        return []
+
+    # 4. Consulta a la Base de Datos (CORREGIDA)
+    orders = (
+        db.query(OrdersModel)
+        .join(TablesModel, OrdersModel.mesa_id == TablesModel.id_tables)
+        .filter(OrdersModel.user_id == current_user.id_users)
+        .filter(TablesModel.number != 1)  # Excluir Mesa 1
+        .order_by(OrdersModel.date_time.desc())
+        .limit(query_limit)
+        .options(
+            joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
+            joinedload(OrdersModel.table)  # <--- CORRECCIÓN AQUÍ: Usamos .table, no .mesa
+        )
+        .all()
+    )
+
+    if not orders:
+        return []
+
+    # 5. Formateo de respuesta
+    orders_dicts = []
+    for order in orders:
+        # <--- CORRECCIÓN AQUÍ: Usamos order.table
+        mesa_number = order.table.number if order.table else None
+
+        order_dict = {
+            "id_orders": order.id_orders,
+            "mesa_number": mesa_number,
+            "state": order.state,
+            "order_status": order.order_status,
+            "date_time": order.date_time,
+            "descuento": order.descuento if order.descuento is not None else 0.0,
+            "total": float(order.total) if order.total is not None else 0.0,
+            "orderscol": order.orderscol,
+            "user_id": order.user_id,
+            "order_uuid": order.order_uuid,
+            "product_name": order.product_name or "Sin nombre",
+            "ticket_number": order.ticket_number if order.ticket_number else "Sin número de ticket",
+            "details": [
+                {
+                    "quantity": detail.quantity,
+                    "unit_price": detail.unit_price if detail.unit_price is not None else 0.0,
+                    "descuento_details": detail.descuento_details if detail.descuento_details is not None else "0",
+                    "subtotal": detail.subtotal if detail.subtotal is not None else 0.0,
+                    "order_detail_status": detail.order_detail_status
+                }
+                for detail in order.order_details
+            ]
+        }
+        orders_dicts.append(order_dict)
+
+    return [OrdersResponse.model_validate(order_dict) for order_dict in orders_dicts]

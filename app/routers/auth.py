@@ -12,8 +12,8 @@ router = APIRouter(
 )
 # Configura el esquema OAuth2
 #oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login/oauth2")
-
-@router.post("/", status_code=status.HTTP_200_OK)
+#@router.post("/", status_code=status.HTTP_200_OK)
+@router.post("", status_code=status.HTTP_200_OK)
 async def login(
     request: Request,
     db: Session = Depends(get_db)
@@ -37,6 +37,20 @@ async def login(
     else:
         raise HTTPException(status_code=415, detail="Unsupported Media Type")
 
+    auth_token = auth.auth_user(user, db)
+    return auth_token
+
+
+
+# --- NUEVO ENDPOINT PARA PRUEBAS (SIN PREFIJOS COMPLICADOS) ---
+@router.post("/test-token", status_code=status.HTTP_200_OK)
+async def login_for_test(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    # Lógica idéntica al login normal
+    form_data = await request.form()
+    user = Login(email=form_data["username"], password=form_data["password"])
     auth_token = auth.auth_user(user, db)
     return auth_token
 
