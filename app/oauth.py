@@ -17,47 +17,59 @@ from app.db.database import get_db
 # Se define el esquema de autenticación OAuth2 con flujo de contraseña (password flow).
 # El usuario debe enviar su token en la cabecera de autorización con formato Bearer.
 # """
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login/")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    """
+    Decodifica el token, extrae el email y busca al usuario en la BD.
+    Retorna el modelo de Base de Datos del usuario (SQLAlchemy).
+    """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="No se pudieron validar las credenciales",
+        detail="No se pudo validar las credenciales",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not token or token.count(".") != 2:
-        raise credentials_exception
 
     try:
+        # 1. Decodificar el token
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
+        
         if email is None:
             raise credentials_exception
+            
     except JWTError:
         raise credentials_exception
     
+    # 2. Buscar usuario en la BD
     user = db.query(models.User).filter(models.User.email == email).first()
+    
     if user is None:
         raise credentials_exception
-    return User.from_orm(user)
+        
+    # 3. Retornar el objeto de la base de datos directo
+    return user
 
-# def get_current_user(token: str = Depends(oauth2_scheme)):
-#     """
-#     Obtiene el usuario actual a partir de un token JWT.
-    
-#     Parámetros:
-#     - token (str): Token de autenticación proporcionado en la solicitud HTTP.
-    
-#     Retorna:
-#     - Usuario autenticado si el token es válido.
-    
-#     Lanza:
-#     - HTTPException 401 si el token es inválido o no se puede validar.
-#     """
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login/")
+
+# def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
 #     credentials_exception = HTTPException(
 #         status_code=status.HTTP_401_UNAUTHORIZED,
-#         detail="Could not validate credentials",
+#         detail="No se pudieron validar las credenciales",
 #         headers={"WWW-Authenticate": "Bearer"},
 #     )
-    
+#     if not token or token.count(".") != 2:
+#         raise credentials_exception
 
+#     try:
+#         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+#         email: str = payload.get("sub")
+#         if email is None:
+#             raise credentials_exception
+#     except JWTError:
+#         raise credentials_exception
+    
+#     user = db.query(models.User).filter(models.User.email == email).first()
+#     if user is None:
+#         raise credentials_exception
+#     return User.from_orm(user)

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, computed_field, EmailStr
+from pydantic import BaseModel, field_validator, computed_field, EmailStr, Field
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -715,6 +715,67 @@ class MenucolorRequest(BaseModel):
 class MenucolorResponse(BaseModel):
     user_id: int
     color: str
+
+    class Config:
+        from_attributes = True
+
+# 🆕 Schema para Actualizar Mesero
+class WaiterUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, description="Nuevo nombre del mesero")
+    access_code: Optional[str] = Field(None, min_length=6, max_length=6, pattern=r"^\d{6}$", description="Nuevo código de 6 dígitos")
+
+
+# Schema para CREAR (Lo que envía el front)
+class WaiterCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Nombre del mesero")
+    access_code: str = Field(..., pattern=r"^\d{6}$", description="Código de 6 dígitos numéricos")
+
+# Schema para RESPONDER (Lo que devuelve la API)
+class WaiterResponse(BaseModel):
+    uuid: str
+    name: str
+    access_code: str # Opcional: podrías ocultarlo si quisieras seguridad extra
+
+    class Config:
+        from_attributes = True
+
+
+# 🆕 Schema para el login de meseros
+class WaiterLoginSchema(BaseModel):
+    email: EmailStr = Field(..., description="Correo del Restaurante (Dueño)")
+    access_code: str = Field(..., min_length=6, max_length=6, description="Código de 6 dígitos del mesero")
+
+
+# 1. Esquema simple para el mesero
+class WaiterInOrder(BaseModel):
+    name: str
+    uuid: str
+
+# 2. Esquema simple para los detalles (productos)
+class OrderDetailSimple(BaseModel):
+    quantity: int
+    unit_price: float
+    subtotal: float
+    descuento_details: Optional[str] = "0"
+    order_detail_status: Optional[str] = None
+
+# 3. ESQUEMA FINAL: Orden con Meseros
+class OrderWithWaitersResponse(BaseModel):
+    id_orders: int
+    mesa_number: int
+    state: str
+    order_status: str
+    date_time: datetime
+    descuento: str
+    total: float
+    orderscol: Optional[str]
+    user_id: int
+    order_uuid: str
+    product_name: str
+    
+    # 👇 AQUÍ ESTÁ LA MAGIA
+    waiters: List[WaiterInOrder] = [] 
+    details: List[OrderDetailSimple] = []
 
     class Config:
         from_attributes = True

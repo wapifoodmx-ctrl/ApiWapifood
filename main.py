@@ -120,7 +120,7 @@ import logging
 from starlette.responses import Response
 
 # Rutas
-from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router, menucolors
+from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router, menucolors, waiters, assignments
 
 # Seguridad
 security = HTTPBasic()
@@ -148,6 +148,8 @@ app.include_router(tables.router)
 app.include_router(payments.router)
 app.include_router(free.router)
 app.include_router(menucolors.router)
+app.include_router(waiters.router)
+app.include_router(assignments.router)
 # 3. Incluye el router en tu aplicación principal
 app.include_router(
     chatbot_router.router,  # El objeto 'router' que definimos en el otro archivo

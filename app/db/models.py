@@ -11,6 +11,7 @@ from app.enums import RoleEnum, RoleOrders, TablesEnum, PaymentMethodEnum, Statu
 from datetime import datetime
 import uuid
 from sqlalchemy import UniqueConstraint
+from sqlalchemy import Table
 
 
 """
@@ -121,8 +122,15 @@ class User(Base):
     #restaurantes_propios = relationship("Restaurante", back_populates="owner", foreign_keys=[Restaurante.owner_id])
     order_analytics = relationship("OrderAnalytics", back_populates="user")
     table_details = relationship("TableDetails", back_populates="user")
+    waiters = relationship("Waiter", back_populates="user")
 
-
+# 1. TABLA INTERMEDIA (Solo guarda IDs)
+table_waiters_association = Table(
+    'table_waiters',
+    Base.metadata,
+    Column('table_id', Integer, ForeignKey('tables.id_tables')),
+    Column('waiter_id', Integer, ForeignKey('waiters.id'))
+)
     
 class ImageUser(Base):
     __tablename__ = "image_user"
@@ -212,6 +220,7 @@ class Tables(Base):
     user = relationship("User", back_populates="tables")
     orders = relationship("Orders", back_populates="table")
     table_details = relationship("TableDetails", back_populates="table")
+    assigned_waiters = relationship("Waiter", secondary=table_waiters_association, back_populates="assigned_tables")
 
 
 class TableDetails(Base):
@@ -341,3 +350,29 @@ class Menucolors(Base):
 
     # Relación
     user = relationship("User")
+
+
+
+ #2. MODELO DE MESERO
+class Waiter(Base):
+    __tablename__ = "waiters"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    uuid = Column(String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    name = Column(String(100), nullable=False)
+    access_code = Column(String(6), nullable=False) # El código de 6 dígitos
+    
+    # Relación con el dueño del comercio
+    user_id = Column(Integer, ForeignKey("users.id_users"), nullable=False)
+    user = relationship("User", back_populates="waiters")
+    assigned_tables = relationship("Tables", secondary=table_waiters_association, back_populates="assigned_waiters")
+
+    # 🔒 REGLA DE ORO: La combinación (user_id + access_code) debe ser única.
+    # Esto permite que el Restaurante A tenga el código '111111' y el Restaurante B también,
+    # pero el Restaurante A no puede tener dos meseros con '111111'.
+    __table_args__ = (
+        UniqueConstraint('user_id', 'access_code', name='uix_waiter_code_per_user'),
+    )
+
+# ⚠️ IMPORTANTE: Agrega esta línea dentro de tu modelo 'User' para completar la relación:
+# waiters = relationship("Waiter", back_populates="user")
