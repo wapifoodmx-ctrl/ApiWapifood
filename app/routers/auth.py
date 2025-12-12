@@ -126,6 +126,7 @@ async def login_waiter(
         "access_token": access_token, 
         "token_type": "bearer",
         "mesero_name": waiter.name, # Devolvemos el nombre para que el Front lo muestre
+        "mesero_uuid": waiter.uuid,
         "restaurant_name": user.name
     }
 

@@ -1104,7 +1104,6 @@ def dame_resumen_orders(
 
 
 
-
 @router.put("/orders/{order_uuid}/cambio_estatus", response_model=OrderFinalizeResponse, status_code=status.HTTP_200_OK)
 async def finalizar_orden(
     order_uuid: str,
@@ -1134,12 +1133,32 @@ async def finalizar_orden(
     if not db_table:
         raise HTTPException(status_code=400, detail="La mesa no existe")
 
-    # Verificar si alguna orden ya está finalizada o cancelada
+    # ---------------------------------------------------------------
+    # 🛑 NUEVA VALIDACIÓN DE ESTADOS (Lo que pediste)
+    # ---------------------------------------------------------------
     for order in db_orders:
-        if order.order_status in (OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado):
-            raise HTTPException(status_code=400, detail=f"La orden con ID {order.id_orders} ya ha sido finalizada o cancelada")
+        # CASO 1: Si la orden ya estaba CANCELADA, prohibir pasar a Finalizada
+        if order.order_status == OrderStatusEnum.Cancelado:
+            if order_status == OrderStatusEnum.Finalizado:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"La orden {order.id_orders} está CANCELADA y no puede reactivarse a Finalizada."
+                )
+            # Nota: Si intentas pasar de Cancelada a Cancelada otra vez, no pasa nada, el código sigue.
+
+        # CASO 2: Si la orden ya estaba FINALIZADA
+        if order.order_status == OrderStatusEnum.Finalizado:
+            # Solo permitimos cambiarla si el nuevo estado es CANCELADO (cliente se fue, error de dedo, etc.)
+            if order_status != OrderStatusEnum.Cancelado:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"La orden {order.id_orders} ya está FINALIZADA. Solo se permite cambiar a CANCELADO."
+                )
+
+    # ---------------------------------------------------------------
 
     # 🆕 Obtener el siguiente número de ticket solo si el estado es "Finalizado"
+    # (Si venimos de Finalizado -> Cancelado, esto se salta y no asigna nuevo ticket, lo cual es correcto)
     ticket_number = None
     if order_status == OrderStatusEnum.Finalizado:
         # Verificar si alguna orden ya tiene un ticket_number asignado
@@ -1172,7 +1191,9 @@ async def finalizar_orden(
 
         # 🆕 Asignar el número de ticket solo si la orden se finaliza
         if order_status == OrderStatusEnum.Finalizado:
-            order.ticket_number = ticket_number
+            # Si ya tenía ticket (ej. re-finalizando algo raro), mantenemos, si no, asignamos
+            if not order.ticket_number: 
+                order.ticket_number = ticket_number
 
         db.add(order)
 
@@ -1186,9 +1207,10 @@ async def finalizar_orden(
                     detail.order_detail_status = OrderStatusEnum.Finalizado
                     db.add(detail)
         
-        # Si la orden se cancela, cancela todos los detalles y establece todos los precios en 0 
+        # Si la orden se cancela (incluso si venía de Finalizado), poner todo en CERO
         if order_status == OrderStatusEnum.Cancelado:
-            order.total = Decimal(0.00)
+            order.total = Decimal(0.00) # Resetear total orden
+            
             order_details = db.query(OrdersDetailsModel).filter(
                 OrdersDetailsModel.order_id == order.id_orders
             ).all()
@@ -1196,12 +1218,14 @@ async def finalizar_orden(
                 detail.order_detail_status = OrderStatusEnum.Cancelado
                 detail.unit_price = 0.0  # Establecer el precio unitario a 0
                 detail.subtotal = 0.0
-                detail.quantity = 0  # Establecer la cantidad a 0
+                detail.quantity = 0  # Establecer la cantidad a 0 (OJO: Esto borra la evidencia de qué pidieron)
                 db.add(detail)
 
     # Liberar la mesa si el estado es Finalizado y no es la mesa número 1
+    # Nota: Si pasamos de Finalizado a Cancelado, la mesa ya debería haberse liberado antes, 
+    # pero no hace daño dejar la lógica, aunque para Cancelado, la mesa también debería quedar Libre/NoDisponible según tu lógica de negocio.
     if order_status == OrderStatusEnum.Finalizado and db_table.number != 1:
-        db_table.state = TablesEnum.NoDisponible
+        db_table.state = TablesEnum.NoDisponible # O la lógica que uses para liberar
 
     db.commit()
 
@@ -1218,7 +1242,6 @@ async def finalizar_orden(
         ticket_number=ticket_number
         #codigo_confirmacion=db_orders[0].codigo_confirmacion
     )
-
 ##--------------------------------------------
 #------------------------------------------
 
@@ -1448,56 +1471,6 @@ async def dame_ordenes_por_estado(
 #------------------------------------------
 #------------------------------------------
 
-# @router.put("/orders/{order_uuid}/cambio_detalles_subordenes", response_model=OrderDetailItem, status_code=status.HTTP_200_OK)
-# async def finalizar_orden(
-#     order_uuid: str,
-#     id_orders_details: int,
-#     order_detail_status: OrderStatusEnum,
-#     db: Session = Depends(get_db),
-#     current_user: User = Depends(get_current_user)
-# ):
-#     # 1. Buscar la orden por UUID y usuario
-#     db_order = db.query(OrdersModel).filter(
-#         OrdersModel.order_uuid == order_uuid,
-#         OrdersModel.user_id == current_user.id_users
-#     ).first()
-
-#     if not db_order:
-#         raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid} o no te pertenece")
-
-#     # 2. Buscar el detalle de la orden por id_orders_details y que pertenezca a la orden encontrada
-#     db_order_detail = db.query(OrdersDetailsModel).filter(
-#         OrdersDetailsModel.id_orders_details == id_orders_details,
-#         OrdersDetailsModel.order_id == db_order.id_orders
-#     ).first()
-#     if not db_order_detail:
-#         raise HTTPException(status_code=404, detail=f"No se encontró el detalle con id {id_orders_details} para el UUID {order_uuid}")
-
-#     # Solo permitir modificar si el estado actual NO es Finalizado ni Cancelado
-#     if db_order_detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
-#         raise HTTPException(
-#             status_code=400,
-#             detail=f"No se puede modificar el estado porque el detalle ya está en estado '{db_order_detail.order_detail_status.value}'"
-#         )
-    
-#     # 3. Cambiar el estado del detalle
-#     db_order_detail.order_detail_status = order_detail_status
-#     db.add(db_order_detail)
-#     db.commit()
-#     db.refresh(db_order_detail)
-
-
-#     # Refrescar la primera orden y la mesa para la respuesta
-#     # db.refresh(db_orders[0])
-#     # db.refresh(db_table)
-
-#     return OrderDetailItem(
-#         product_name=db_order_detail.product.name if db_order_detail.product and db_order_detail.product.name else "Producto desconocido",
-#         quantity=db_order_detail.quantity,
-#         unit_price=float(db_order_detail.unit_price) if db_order_detail.unit_price is not None else 0.0,
-#         subtotal=float(db_order_detail.subtotal) if db_order_detail.subtotal is not None else 0.0,
-#         order_detail_status=db_order_detail.order_detail_status
-#     )
 
 
 @router.put("/orders/{order_uuid}/cambio_details_status", response_model=List[OrderDetailItem], status_code=status.HTTP_200_OK)
@@ -1514,83 +1487,96 @@ async def finalizar_orden(
     except ValueError:
         raise HTTPException(
             status_code=422,
-            detail="El campo id_orders_details debe contener IDs enteros separados por comas (ej. '357,358,359')"
+            detail="El campo id_orders_details debe contener IDs enteros separados por comas"
         )
 
-    # 1. Buscar la orden por UUID y usuario
+    # 1. Buscar la orden
     db_order = db.query(OrdersModel).filter(
         OrdersModel.order_uuid == order_uuid,
         OrdersModel.user_id == current_user.id_users
     ).first()
 
     if not db_order:
-        raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid} o no te pertenece")
+        raise HTTPException(status_code=404, detail=f"No se encontró una orden con UUID {order_uuid}")
 
-    # 2. Buscar los detalles de la orden para los id_orders_details proporcionados
+    # 2. Buscar los detalles
     db_order_details = db.query(OrdersDetailsModel).filter(
         OrdersDetailsModel.id_orders_details.in_(id_orders_details_list),
         OrdersDetailsModel.order_id == db_order.id_orders
     ).all()
 
-    # Verificar que se encontraron todos los detalles solicitados
     if len(db_order_details) != len(id_orders_details_list):
-        found_ids = {detail.id_orders_details for detail in db_order_details}
-        missing_ids = [id_detail for id_detail in id_orders_details_list if id_detail not in found_ids]
-        raise HTTPException(
-            status_code=404,
-            detail=f"No se encontraron los detalles con IDs {missing_ids} para el UUID {order_uuid}"
-        )
+        raise HTTPException(status_code=404, detail="No se encontraron todos los detalles solicitados")
 
-    # 3. Verificar que ningún detalle esté en estado Finalizado o Cancelado
+    # ---------------------------------------------------------
+    # 3. VERIFICACIÓN DE ESTADOS (LÓGICA ACTUALIZADA)
+    # ---------------------------------------------------------
     for detail in db_order_details:
-        if detail.order_detail_status in [OrderStatusEnum.Finalizado, OrderStatusEnum.Cancelado]:
-            raise HTTPException(
+        
+        # A. Si el detalle ya está CANCELADO, no se puede revivir.
+        if detail.order_detail_status == OrderStatusEnum.Cancelado:
+             raise HTTPException(
                 status_code=400,
-                detail=f"No se puede modificar el estado porque el detalle con ID {detail.id_orders_details} ya está en estado '{detail.order_detail_status.value}'"
+                detail=f"El detalle {detail.id_orders_details} ya está CANCELADO y no se puede modificar."
             )
 
-    # 4. Cambiar el estado de los detalles seleccionados y actualizar subtotal
+        # B. Si el detalle está FINALIZADO, solo permitimos pasar a CANCELADO.
+        if detail.order_detail_status == OrderStatusEnum.Finalizado:
+            if order_detail_status != OrderStatusEnum.Cancelado:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"El detalle {detail.id_orders_details} está FINALIZADO. Solo se permite cambiarlo a CANCELADO."
+                )
+
+    # ---------------------------------------------------------
+
+    # 4. Cambiar el estado y actualizar montos
     updated_details = []
     for detail in db_order_details:
         detail.order_detail_status = order_detail_status
+        
+        # Si se cancela, ponemos montos en 0
         if order_detail_status == OrderStatusEnum.Cancelado:
-            detail.subtotal = 0.0  # Establecer subtotal a 0 para detalles cancelados
-            detail.unit_price = 0.0  # Establecer precio unitario a 0
-            detail.quantity = 0  # Establecer cantidad a 0
+            detail.subtotal = 0.0
+            detail.unit_price = 0.0
+            detail.quantity = 0 
+        
         db.add(detail)
+        
         updated_details.append(OrderDetailItem(
-            product_name=detail.product.name if detail.product and detail.product.name else "Producto desconocido",
+            product_name=detail.product.name if detail.product else "Producto desconocido",
             quantity=detail.quantity,
-            unit_price=float(detail.unit_price) if detail.unit_price is not None else 0.0,
-            subtotal=float(detail.subtotal) if detail.subtotal is not None else 0.0,
+            unit_price=float(detail.unit_price) if detail.unit_price else 0.0,
+            subtotal=float(detail.subtotal) if detail.subtotal else 0.0,
             order_detail_status=detail.order_detail_status
         ))
 
-    # 5. Recalcular el total de la orden
-    all_order_details = db.query(OrdersDetailsModel).filter(
+    # 5. Recalcular el total de la orden principal
+    # Sumamos solo los detalles que NO estén cancelados
+    all_active_details = db.query(OrdersDetailsModel).filter(
         OrdersDetailsModel.order_id == db_order.id_orders,
         OrdersDetailsModel.order_detail_status != OrderStatusEnum.Cancelado
     ).all()
     
-    new_total = sum(float(detail.subtotal) for detail in all_order_details if detail.subtotal is not None)
-    db_order.total = new_total  # Actualizar el total en la orden
+    new_total = sum(float(detail.subtotal) for detail in all_active_details if detail.subtotal is not None)
+    db_order.total = new_total
     db.add(db_order)
 
-     # --- NUEVA LÓGICA: Cancelar la orden si todos los detalles están cancelados
-    detalles_todos = db.query(OrdersDetailsModel).filter(
+    # --- LÓGICA: Cancelar la orden completa si TODOS los detalles fueron cancelados ---
+    all_details_check = db.query(OrdersDetailsModel).filter(
         OrdersDetailsModel.order_id == db_order.id_orders
     ).all()
-    if detalles_todos and all(d.order_detail_status == OrderStatusEnum.Cancelado for d in detalles_todos):
+    
+    if all_details_check and all(d.order_detail_status == OrderStatusEnum.Cancelado for d in all_details_check):
         db_order.order_status = OrderStatusEnum.Cancelado
+        # Si se cancela la orden completa, el total debe ser 0.00 (redundancia de seguridad)
+        db_order.total = 0.0 
         db.add(db_order)  
- 
 
-    # 6. Confirmar los cambios en la base de datos
     db.commit()
-    db.refresh(db_order)  # Refrescar la orden para asegurar que los datos estén actualizados
+    db.refresh(db_order)
 
     return updated_details
-
 #------------------------------------------
 #------------------------------------------
 

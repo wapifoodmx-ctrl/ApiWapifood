@@ -753,29 +753,25 @@ class WaiterInOrder(BaseModel):
 
 # 2. Esquema simple para los detalles (productos)
 class OrderDetailSimple(BaseModel):
-    quantity: int
-    unit_price: float
-    subtotal: float
-    descuento_details: Optional[str] = "0"
-    order_detail_status: Optional[str] = None
-
+    pass
 # 3. ESQUEMA FINAL: Orden con Meseros
 class OrderWithWaitersResponse(BaseModel):
-    id_orders: int
-    mesa_number: int
-    state: str
-    order_status: str
-    date_time: datetime
-    descuento: str
-    total: float
-    orderscol: Optional[str]
-    user_id: int
+    # state: str  <-- Eliminado
+    # order_status: str <-- Eliminado
+    # descuento: str <-- Eliminado
+    # total: float <-- Eliminado
+    # orderscol: Optional[str] <-- Eliminado
     order_uuid: str
-    product_name: str
     
-    # 👇 AQUÍ ESTÁ LA MAGIA
-    waiters: List[WaiterInOrder] = [] 
-    details: List[OrderDetailSimple] = []
+    waiters: List[WaiterInOrder] = []
+    details: List[OrderDetailSimple] = [] # Lista de detalles (ahora vacíos)
 
     class Config:
         from_attributes = True
+
+
+class WaiterLimitResponse(BaseModel):
+    plan_name: str
+    max_waiters: int
+    current_waiters: int
+    remaining_slots: int

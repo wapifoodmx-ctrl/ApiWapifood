@@ -376,3 +376,17 @@ class Waiter(Base):
 
 # ⚠️ IMPORTANTE: Agrega esta línea dentro de tu modelo 'User' para completar la relación:
 # waiters = relationship("Waiter", back_populates="user")
+
+
+
+class OrderWaiterHistory(Base):
+    __tablename__ = "order_waiter_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    order_id = Column(Integer, ForeignKey("orders.id_orders"), nullable=False)
+    waiter_id = Column(Integer, ForeignKey("waiters.id"), nullable=False)
+    assigned_at = Column(DateTime, default=datetime.utcnow) # La hora marca la secuencia
+
+    # Relaciones
+    order = relationship("Orders", backref="waiter_history") # Para acceder desde la orden
+    waiter = relationship("Waiter") # Para sacar el nombre del mesero
