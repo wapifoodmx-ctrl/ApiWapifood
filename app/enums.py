@@ -26,14 +26,23 @@ class TablesEnum(str, Enum):
     Ocupado ="Ocupado"
     NoDisponible ="NoDisponible"
 
+# class SubscriptionAmount(Enum):
+#     PLAN_INAUGURACION = 15  # 1 mesa
+#     PLAN_100 = 100  # 1 mesa
+#     PLAN_200 = 200  # 16 mesas
+#     PLAN_300 = 300  # 26 mesas
+#     BASICO_IMPRESORA = 1960 # Ejemplo, ajusta según el monto real
+#     RESTAURANTE_IMPRESORA = 2920 # Ejemplo, ajusta según el monto real
+#     PLUS_RESTAURANTE_IMPRESORA = 3880 # Añadir el monto correcto
+
 class SubscriptionAmount(Enum):
-    PLAN_INAUGURACION = 15  # 1 mesa
-    PLAN_100 = 100  # 1 mesa
-    PLAN_200 = 200  # 16 mesas
-    PLAN_300 = 300  # 26 mesas
-    BASICO_IMPRESORA = 1960 # Ejemplo, ajusta según el monto real
-    RESTAURANTE_IMPRESORA = 2920 # Ejemplo, ajusta según el monto real
-    PLUS_RESTAURANTE_IMPRESORA = 3880 # Añadir el monto correcto
+    PLAN_INAUGURACION = 40  # 1 mesa
+    PLAN_100 = 400  # 1 mesa
+    PLAN_200 = 600  # 16 mesas
+    PLAN_300 = 800  # 26 mesas
+    BASICO_IMPRESORA = 4000 # Ejemplo, ajusta según el monto real
+    RESTAURANTE_IMPRESORA = 6000 # Ejemplo, ajusta según el monto real
+    PLUS_RESTAURANTE_IMPRESORA = 8000 # Añadir el monto correcto
 
 #Para el metodo de pago
 #La enumeración es una lista de valores que se pueden asignar a una variable.

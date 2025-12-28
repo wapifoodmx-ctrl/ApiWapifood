@@ -109,39 +109,40 @@ router = APIRouter(
 # --- INICIO DE DATOS DE EJEMPLO ---
 # (Tus definiciones de planes, adaptadas para usar strings como claves)
 # Asegúrate de tener esta definición accesible en este archivo.
+
 PLAN_PRICES = {
     "INAUGURACION": {
-        "amount": 15.0,
+        "amount": 40.0,
         "currency": "MXN",
         "description": "Plan de Inauguración (Promocional)"
     },
     "BASICO": {
-        "amount": 100.0,
+        "amount": 400.0,
         "currency": "MXN",
         "description": "Plan Básico"
     },
     "PROFESIONAL": {
-        "amount": 200.0,
+        "amount": 600.0,
         "currency": "MXN",
         "description": "Plan Profesional"
     },
     "EMPRESARIAL": {
-        "amount": 300.0,
+        "amount": 800.0,
         "currency": "MXN",
         "description": "Plan Empresarial"
     },
     "BASICO_IMPRESORA": {
-        "amount": 1960.0,
+        "amount": 4000.0,
         "currency": "MXN",
         "description": "Plan Básico con Impresora"
     },
     "RESTAURANTE_IMPRESORA": {
-        "amount": 2920.0,
+        "amount": 6000.0,
         "currency": "MXN",
         "description": "Plan Restaurante con Impresora"
     },
     "PLUS_RESTAURANTE_IMPRESORA": {
-        "amount": 3880.0,
+        "amount": 8000.0,
         "currency": "MXN",
         "description": "Plan Plus Restaurante con Impresora"
     }

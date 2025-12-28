@@ -71,41 +71,42 @@ router = APIRouter(
 mercado_pago_sdk = mercadopago.SDK(MERCADO_PAGO_ACCESS_TOKEN)
 
 # Mapa de precios para los planes
+
 PLAN_PRICES = {
     PlanType.INAUGURACION: {
-        "amount": 15.0,
+        "amount": 40.0,
         "currency": "MXN",
         "description": "Plan de Inauguración (Promocional)"
     },
     PlanType.BASICO: {
-        "amount": 100.0,
+        "amount": 400.0,
         "currency": "MXN",
         "description": "Plan Básico"
     },
     PlanType.PROFESIONAL: {
-        "amount": 200.0,
+        "amount": 600.0,
         "currency": "MXN",
         "description": "Plan Profesional"
     },
     PlanType.EMPRESARIAL: {
-        "amount": 300.0,
+        "amount": 800.0,
         "currency": "MXN",
         "description": "Plan Empresarial"
     },
     PlanType.BASICO_IMPRESORA: {
-        "amount": 1960.0,
+        "amount": 4000.0,
         "currency": "MXN",
-        "description": "Plan Básico con Impresora"
+        "description": "Plan Básico Anual"
     },
     PlanType.RESTAURANTE_IMPRESORA: {
-        "amount": 2920.0,
+        "amount": 6000.0,
         "currency": "MXN",
-        "description": "Plan Restaurante con Impresora"
+        "description": "Plan Restaurante Anual"
     },
     PlanType.PLUS_RESTAURANTE_IMPRESORA: {
-        "amount": 3880.0,
+        "amount": 8000.0,
         "currency": "MXN",
-        "description": "Plan Plus Restaurante con Impresora"
+        "description": "Plan Plus Restaurante Anual"
     }
 }
 
