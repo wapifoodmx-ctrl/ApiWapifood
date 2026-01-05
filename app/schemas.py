@@ -775,3 +775,12 @@ class WaiterLimitResponse(BaseModel):
     max_waiters: int
     current_waiters: int
     remaining_slots: int
+
+
+class IngredienteSeleccionado(BaseModel):
+    ingredient_id: int # El ID del microservicio (75, 74)
+    quantity: float    # Cantidad (1, 200, etc.)
+
+class AsignarRecetaSchema(BaseModel):
+    product_id: int    # El ID del producto local (APIWAPI)
+    ingredients: List[IngredienteSeleccionado]

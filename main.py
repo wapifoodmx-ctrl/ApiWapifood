@@ -120,7 +120,7 @@ import logging
 from starlette.responses import Response
 
 # Rutas
-from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router, menucolors, waiters, assignments
+from app.routers import user, tables, products, orders, payments, auth, categoria, solicitarOTP, analytics, free, chatbot_router, menucolors, waiters, assignments, importrouter
 
 # Seguridad
 security = HTTPBasic()
@@ -144,6 +144,7 @@ app.include_router(categoria.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(analytics.router)
+app.include_router(importrouter.router)
 app.include_router(tables.router)
 app.include_router(payments.router)
 app.include_router(free.router)

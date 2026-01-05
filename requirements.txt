@@ -70,3 +70,6 @@ uvloop==0.21.0
 watchfiles==1.1.0
 websockets==15.0.1
 groq
+pandas
+openpyxl
+python-multipart

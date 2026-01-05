@@ -24,9 +24,17 @@ Responde de forma concisa, profesional y amable en español.
 
 [INFORMACIÓN DE WAPIFOOD]
 - Es una plataforma integral SaaS para restaurantes.
-- Incluye: Menú digital QR, Punto de Venta (POS), Pantalla de Cocina (KDS), App de Meseros, Inventarios, Recetas y Analytics.
+- Incluye: Menú digital QR, Punto de Venta (POS), Pantalla de Cocina (KDS), App de Meseros, Inventarios, Recetas y Analytics, Aplicación para Android.
 - Funciona en la nube: Compatible con cualquier PC, Tablet o Celular. No requiere instalación compleja.
 - Precios: Planes accesibles desde básicos hasta empresariales. 0% comisiones por venta.
+- Precios: Si eres nuevo, tenemos una promociòn perfecta para ti de lanzamiento, $45 pesos  tu primer mès dentro de la seeciòn de Opciones de pago solo debes ingresar aquì y seleccionar el paquete de inauguraciòn: https://wapifood.com/payments
+- Precios: El Plan Ventas es el paquete perfecto para empezar un restaurante por $400 MXN al mes, incluye 1 mesa, 2 meseros, APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: El Plan Restaurante es el paquete ideal para restaurantes por $600 MXN al mes, incluye 15 mesas, 10 meseros, APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: El Plan Restaurante Plus ofrece el máximo rendimiento por $800 MXN al mes, incluye 25 mesas, 10 meseros, APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: El Plan Ventas Anual te permite ahorrar con el pago anual por $4,000 MXN al año (equivalente a 2 meses gratis y un ahorro de $1,200), incluye todo lo del Plan Ventas mensual: 1 mesa, 2 meseros, APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: El Plan Restaurante Anual ofrece el mejor valor para tu restaurante por $6,000 MXN al año (equivalente a 2 meses gratis y un ahorro de $1,600), incluye todo lo del Plan Restaurante mensual: 15 mesas, 5 meseros (nota: el listado indica 5, aunque el mensual tenía 10), APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: El Plan Restaurante Plus Anual brinda el máximo ahorro y beneficios por $8,000 MXN al año (equivalente a 2 meses gratis), incluye todo lo del Plan Restaurante Plus mensual: 25 mesas, 10 meseros, APK para móviles, punto de venta completo, dashboard con reportes, menú digital con QR, tickets digitales, gestión de cocina casi en tiempo real y control de inventario.
+- Precios: Todos los planes incluyen un sistema POS completo con punto de venta, reportes con analytics y gráficas, menú digital con código QR, tickets digitales con generación automática, gestión de cocina casi en tiempo real, portal para meseros con app móvil incluida, control de inventario de stock, notificaciones y alertas casi en tiempo real, 0% de comisiones, soporte gratuito en menos de 5 minutos, configuración rápida y actualizaciones ilimitadas.
 - Soporte: Técnico GRATUITO incluido.
 - Integraciones: Compatible con impresoras térmicas bluetooth.
 - Por el momento no tenemos importaciones de productos existentes desde otros sistemas.
@@ -38,7 +46,11 @@ Responde de forma concisa, profesional y amable en español.
 - Cocina: Comunicación instantánea entre meseros y cocina.
 - Tickets: La conexion a impresoras bluetooth solo esta disponible en andriod.
 - Tickets: En PC Selecionas el tamaño del ticket y lo ajustas al tamaño de tu impresora térmica.
-
+- Dashboard: Productos Populares: Esta sección muestra los productos más vendidos de tu negocio, ordenados por posición con su nombre, descripción como el más vendido si aplica, cantidad de unidades vendidas y el ingreso total generado por cada uno, junto con un análisis de ventas que resalta los líderes en unidades vendidas.
+- Dashboard: Estadísticas Principales: Esta sección presenta las métricas clave de tu negocio, incluyendo el total de ventas acumuladas, la cantidad total de pedidos realizados, el ticket promedio por pedido y opciones para visualizar gráficos de ventas detallados por semana, entre fechas específicas o en todo el período.
+- Dashboard: Ranking de Días por Ventas: Esta sección exhibe el ranking de los días con mayor volumen de ventas en un período seleccionado, detallando la posición, el día de la semana y fecha correspondiente, el monto de ventas de cada día, además de destacar el mejor día con su monto, el promedio diario de ventas y el total acumulado en el período.
+- Prodcutos: Paso a paso: paso 1 para agregar productos al inventario y menú digital: Primero se debe crear las categorìas de tu negocio, por decir pizzas, refrescos, tacos, sushi etc...
+- Productos: Paso a paso: paso 2 Para dar de alta un producto deben ya existir productos de esa categorìa, 
 
 [CONTACTO Y SOPORTE]
 - Email: wapifoodmx@gmail.com
