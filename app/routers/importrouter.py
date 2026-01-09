@@ -29,13 +29,14 @@ def clean_nan(val):
 # ---------------------------------------------------------
 # IMPORTAR INSUMOS (Corregido)
 # ---------------------------------------------------------
+
 @router.post("/insumos", status_code=status.HTTP_201_CREATED)
 async def importar_insumos(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Lee Excel de Insumos y envía al Microservicio.
+    Lee Excel, convierte Kilos->Gramos y Litros->Mililitros, y envía al Microservicio.
     """
     # 1. Validar extensión
     filename = file.filename.lower()
@@ -52,33 +53,54 @@ async def importar_insumos(
     except Exception as e:
         raise HTTPException(400, f"Error leyendo archivo: {e}")
 
-    # 3. Normalizar columnas (Todo a minúsculas, sin espacios)
+    # 3. Normalizar columnas
     df.columns = [str(c).lower().strip().replace(" ", "") for c in df.columns]
-    # NOTA: Tu excel tiene "indicecliente" (sin espacio), así que .replace(" ", "") ayuda.
 
     payload_insumos = []
     errores = []
 
     for index, row in df.iterrows():
         try:
-            # Validar nombre
             nombre = str(row.get('nombre', '')).strip()
             if not nombre or nombre.lower() == 'nan':
                 continue 
 
-            # CORRECCIÓN PRINCIPAL AQUÍ ABAJO:
-            # Usamos current_user.email en lugar de current_user.username
+            # --- LECTURA DE DATOS CRUDOS ---
+            raw_unidad = str(row.get('unidad', 'unidad')).strip()
+            raw_cantidad = float(row.get('cantidad', 0) if clean_nan(row.get('cantidad')) is not None else 0)
+            raw_costo = float(row.get('costo', 0) if clean_nan(row.get('costo')) is not None else 0)
+
+            # --- 🧠 LÓGICA DE CONVERSIÓN (Kilos -> Gramos / Litros -> Mililitros) ---
+            final_unidad = raw_unidad
+            final_cantidad = raw_cantidad
+            final_costo = raw_costo
             
+            unidad_lower = raw_unidad.lower()
+
+            # CASO 1: KILOS -> GRAMOS
+            if unidad_lower in ['kilos', 'kilo', 'kg', 'kgs']:
+                final_unidad = "Gramos"
+                final_cantidad = raw_cantidad * 1000  # 20 Kg -> 20,000 gr
+                if raw_costo > 0:
+                    final_costo = raw_costo / 1000    # $100 el Kg -> $0.10 el gramo
+
+            # CASO 2: LITROS -> MILILITROS
+            elif unidad_lower in ['litros', 'litro', 'l', 'lt', 'lts']:
+                final_unidad = "Mililitros"
+                final_cantidad = raw_cantidad * 1000  # 5 L -> 5,000 ml
+                if raw_costo > 0:
+                    final_costo = raw_costo / 1000    # $50 el Litro -> $0.05 el ml
+
+            # -----------------------------------------------------------------------
+
             item = {
                 "external_id": str(row.get('indicecliente', '')), 
                 "name": nombre,
                 "description": str(row.get('descripcion', '')),
-                "stock_to_add": float(row.get('cantidad', 0) if clean_nan(row.get('cantidad')) is not None else 0),
-                "cost": float(row.get('costo', 0) if clean_nan(row.get('costo')) is not None else 0),
-                "unit": str(row.get('unidad', 'unidad')).strip(),
+                "stock_to_add": final_cantidad, # Enviamos la cantidad convertida
+                "cost": final_costo,            # Enviamos el costo unitario (por gramo/ml)
+                "unit": final_unidad,           # Enviamos la nueva unidad estandarizada
                 "category": str(row.get('categoria', 'insumo')).strip(),
-                
-                # 🛠️ AQUÍ ESTABA EL ERROR: Tu modelo User usa 'email', no 'username'
                 "username": current_user.email 
             }
             payload_insumos.append(item)
@@ -90,9 +112,6 @@ async def importar_insumos(
         return {"message": "No se encontraron datos válidos", "errores": errores}
 
     # 4. Enviar al Microservicio
-    # Necesitas pasar el token si tu microservicio requiere auth, o confiar en la red interna.
-    # Si el microservicio es público/protegido, revisa los headers.
-    
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
@@ -102,7 +121,6 @@ async def importar_insumos(
             )
             
             if response.status_code not in [200, 201]:
-                 # Si falla el microservicio, mostramos qué pasó
                  return {
                      "message": "Error en Microservicio", 
                      "detalle_micro": response.text, 
@@ -117,8 +135,6 @@ async def importar_insumos(
 
         except httpx.RequestError as e:
             raise HTTPException(503, detail=f"No hay conexión con el Inventario: {e}")
-        
-
 
 
 # ---------------------------------------------------------
@@ -159,7 +175,7 @@ async def importar_productos_flujo_completo(
             if not nombre or nombre.lower() == 'nan': continue
 
             # Datos básicos
-            cat_nombre = str(row.get("categoria", "General")).strip()
+            cat_nombre = str(row.get("categoria", "General")).strip().upper()
             precio = float(row.get("precio", 0) if clean_nan(row.get("precio")) is not None else 0)
             costo = float(row.get("costo_por_piezas", 0) if clean_nan(row.get("costo_por_piezas")) is not None else 0)
             # Asumimos que si es producto directo, la unidad es Pieza o lo que diga el excel
@@ -240,16 +256,17 @@ async def importar_productos_flujo_completo(
 
 
 
+# En APIWAPI (routers/importacion.py)
 
-@router.post("/productos/catalogo-simple", status_code=status.HTTP_201_CREATED)
-async def importar_catalogo_simple(
+@router.post("/productos/carga-completa-recetas", status_code=status.HTTP_201_CREATED)
+async def importar_productos_con_receta_completa(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    PASO 1: Carga solo la información de venta.
-    Columnas: nombre, precio, categoria, descripcion.
+    Carga masiva de Productos + Recetas.
+    El Excel debe tener los IDs de los ingredientes ya existentes.
     """
     # 1. Leer Excel
     contents = await file.read()
@@ -263,7 +280,9 @@ async def importar_catalogo_simple(
 
     df.columns = [str(c).lower().strip().replace(" ", "_") for c in df.columns]
 
-    productos_creados = []
+    payload_recetas = []
+    productos_creados = 0
+    errores = []
     categorias_cache = {}
 
     for index, row in df.iterrows():
@@ -271,55 +290,91 @@ async def importar_catalogo_simple(
             nombre = str(row.get("nombre", "")).strip()
             if not nombre or nombre.lower() == 'nan': continue
 
-            # --- Gestión Categoría ---
+            # --- A. Crear Producto Local ---
             cat_nombre = str(row.get("categoria", "General")).strip().upper()
             cat_id = categorias_cache.get(cat_nombre)
             
             if not cat_id:
-                cat_db = db.query(Categoria).filter(
-                    Categoria.nombre_categoria == cat_nombre, 
-                    Categoria.owner_id == current_user.id_users
-                ).first()
+                # (Lógica de crear categoría si no existe - Igual que antes)
+                cat_db = db.query(Categoria).filter(Categoria.nombre_categoria == cat_nombre, Categoria.owner_id == current_user.id_users).first()
                 if not cat_db:
                     new_cat = Categoria(nombre_categoria=cat_nombre, owner_id=current_user.id_users, descripcion_categoria="Import", status="activo")
-                    db.add(new_cat)
-                    db.flush()
+                    db.add(new_cat); db.flush()
                     cat_id = new_cat.id_categoria
                 else:
                     cat_id = cat_db.id_categoria
                 categorias_cache[cat_nombre] = cat_id
 
-            # --- Crear Producto Local ---
-            producto = db.query(Products).filter(
-                Products.name == nombre, 
-                Products.owner_id == current_user.id_users
-            ).first()
-
+            producto = db.query(Products).filter(Products.name == nombre, Products.owner_id == current_user.id_users).first()
             if not producto:
                 producto = Products(
                     name=nombre,
                     description=str(row.get("descripcion", "")),
                     price=float(row.get("precio", 0)),
-                    production_cost=0, # Se actualizará cuando asignen receta
+                    production_cost=0, 
                     owner_id=current_user.id_users,
                     category_id=cat_id,
                     status=StatusEnum.activo
                 )
                 db.add(producto)
-                db.flush()
+                db.flush() # Obtener ID
+                productos_creados += 1
             
-            # Guardamos info básica para responder al front
-            productos_creados.append({
-                "id": producto.id_products,
-                "nombre": producto.name
-            })
+            # --- B. Procesar Receta (IDs y Cantidades) ---
+            # Leemos las columnas 'ids_insumos' y 'cantidades' (ej: "75,74" y "1,1")
+            ids_raw = str(row.get("ids_insumos", ""))
+            cantidades_raw = str(row.get("cantidades", "")) # Puede llamarse 'cantidades_de_los_ingredientes...' en tu excel
+
+            # Limpieza básica
+            if ids_raw and ids_raw.lower() != 'nan' and cantidades_raw and cantidades_raw.lower() != 'nan':
+                lista_ids = [x.strip() for x in ids_raw.split(',') if x.strip()]
+                lista_cantidades = [x.strip() for x in cantidades_raw.split(',') if x.strip()]
+
+                if len(lista_ids) == len(lista_cantidades):
+                    ingredientes_data = []
+                    for i in range(len(lista_ids)):
+                        try:
+                            ing_id = int(float(lista_ids[i])) # Convertir a int (por si viene como 75.0)
+                            qty = float(lista_cantidades[i])
+                            ingredientes_data.append({"ingredient_id": ing_id, "quantity": qty})
+                        except ValueError:
+                            pass # Ignorar valores no numéricos
+                    
+                    if ingredientes_data:
+                        payload_recetas.append({
+                            "local_product_id": producto.id_products,
+                            "product_name": producto.name,
+                            "username": current_user.email,
+                            "ingredients": ingredientes_data
+                        })
+                else:
+                    errores.append(f"Fila {index}: La cantidad de IDs no coincide con la cantidad de montos.")
 
         except Exception as e:
-            print(f"Error fila {index}: {e}")
-            continue
+            errores.append(f"Fila {index}: {str(e)}")
 
     db.commit()
-    return {"message": "Catálogo cargado", "productos": productos_creados}
+
+    # --- C. Enviar Recetas al Microservicio ---
+    if payload_recetas:
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(
+                    f"{MICRO_URL}/internal/sync-complex-recipes",
+                    json=payload_recetas,
+                    timeout=60.0
+                )
+                if resp.status_code != 200:
+                    return {"message": "Productos creados, error en recetas", "detalle": resp.text}
+            except Exception as e:
+                return {"message": "Productos creados, fallo conexión microservicio", "error": str(e)}
+
+    return {
+        "message": "Carga completa", 
+        "productos_creados": productos_creados, 
+        "recetas_enviadas": len(payload_recetas),
+        "errores": errores
+    }
 
 
 @router.post("/productos/asignar-receta", status_code=200)
