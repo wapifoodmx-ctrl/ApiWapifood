@@ -96,11 +96,11 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login/")
 # Esta debe ser la ÚNICA fuente de verdad para saber cuántas mesas tiene cada plan.
 # Usamos el nombre del plan (en minúsculas) tal como se guarda en la BD.
 PLAN_TO_TABLES_MAP = {
-    "inauguracion": 1,
-    "basico": 1,
+    "inauguracion": 3,
+    "basico": 3,
     "profesional": 16,
     "empresarial": 26,
-    "basico_impresora": 1,
+    "basico_impresora": 3,
     "restaurante_impresora": 16,
     "plus_restaurante_impresora": 26
 }

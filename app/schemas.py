@@ -784,3 +784,8 @@ class IngredienteSeleccionado(BaseModel):
 class AsignarRecetaSchema(BaseModel):
     product_id: int    # El ID del producto local (APIWAPI)
     ingredients: List[IngredienteSeleccionado]
+
+
+# --- ESQUEMA DE ENTRADA ---
+class ProductListInput(BaseModel):
+    product_ids: List[int]

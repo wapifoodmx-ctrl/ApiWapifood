@@ -390,3 +390,16 @@ class OrderWaiterHistory(Base):
     # Relaciones
     order = relationship("Orders", backref="waiter_history") # Para acceder desde la orden
     waiter = relationship("Waiter") # Para sacar el nombre del mesero
+
+
+# En app/db/models.py
+
+class ProductSelection(Base):
+    __tablename__ = "product_selection"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id_users"))
+    product_id = Column(Integer, ForeignKey("products.id_products"))
+    
+    # Relación para poder traer los datos del producto fácilmente
+    product = relationship("Products")

@@ -499,11 +499,11 @@ async def get_user_payments(
 
 def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: float):
     plan_mesas = {
-        PlanType.INAUGURACION.value: 1,  # 1 mesa para el plan de inauguración
-        PlanType.BASICO.value: 1,
+        PlanType.INAUGURACION.value: 3,  # 1 mesa para el plan de inauguración
+        PlanType.BASICO.value: 3,
         PlanType.PROFESIONAL.value: 16,
         PlanType.EMPRESARIAL.value: 26,
-        PlanType.BASICO_IMPRESORA.value: 1,
+        PlanType.BASICO_IMPRESORA.value: 3,
         PlanType.RESTAURANTE_IMPRESORA.value: 16,
         PlanType.PLUS_RESTAURANTE_IMPRESORA.value: 26
     }
@@ -512,13 +512,22 @@ def sync_tables_with_subscription(db: Session, user_id: int, plan: str, amount: 
         raise HTTPException(status_code=400, detail="Plan no reconocido")
 
     amount_mapping = {
-        15.0: SubscriptionAmount.PLAN_INAUGURACION,
+        15.0: SubscriptionAmount.PLAN_INAUGURACION,  # Precio viejo (puedes dejarlo por compatibilidad)
+        40.0: SubscriptionAmount.PLAN_INAUGURACION,  # 👈 NUEVO PRECIO ACTUAL
         100.0: SubscriptionAmount.PLAN_100,
+        400.0: SubscriptionAmount.PLAN_BASICO,       # 👈 NUEVO PRECIO ACTUAL
         200.0: SubscriptionAmount.PLAN_200,
+        600.0: SubscriptionAmount.PLAN_PROFESIONAL,  # Sugerencia: Agregado por si acaso
         300.0: SubscriptionAmount.PLAN_300,
+        800.0: SubscriptionAmount.PLAN_EMPRESARIAL,  # Sugerencia: Agregado por si acaso
+        
+        # Planes anuales/impresora (estos parecen estar bien según tu código anterior)
         1960.0: SubscriptionAmount.BASICO_IMPRESORA,
         2920.0: SubscriptionAmount.RESTAURANTE_IMPRESORA,
-        3880.0: SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA
+        3880.0: SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA,
+        4000.0: SubscriptionAmount.BASICO_IMPRESORA,      # Precio actualizado según PLAN_PRICES
+        6000.0: SubscriptionAmount.RESTAURANTE_IMPRESORA, # Precio actualizado según PLAN_PRICES
+        8000.0: SubscriptionAmount.PLUS_RESTAURANTE_IMPRESORA # Precio actualizado según PLAN_PRICES
     }
     try:
         subscription_amount_enum = amount_mapping.get(float(amount))
