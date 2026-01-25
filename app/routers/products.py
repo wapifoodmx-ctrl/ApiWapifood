@@ -201,6 +201,70 @@ def get_custom_list(
     return [ProductsSchema.model_validate(p) for p in products_dicts]
 
 
+# 4. PUT: Sincronizar lista (Actualizar masivamente)
+@router.put("/custom-list", status_code=status.HTTP_200_OK)
+def update_custom_list(
+    payload: ProductListInput, # { "product_ids": [1, 5, 8] }
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sincroniza la lista de selección:
+    - Agrega los IDs nuevos que no estaban.
+    - Elimina los IDs viejos que ya no vienen en la lista.
+    - Asegura que la lista final en la BD sea idéntica a la enviada.
+    """
+    # 1. Convertir la lista de entrada en un SET para operaciones rápidas
+    incoming_ids = set(payload.product_ids)
+
+    # 2. Obtener los IDs que ya existen actualmente en la BD para este usuario
+    existing_records = db.query(ProductSelection).filter(
+        ProductSelection.user_id == current_user.id_users
+    ).all()
+    existing_ids = {record.product_id for record in existing_records}
+
+    # 3. Calcular diferencias
+    ids_to_add = incoming_ids - existing_ids      # Están en el payload pero no en la BD
+    ids_to_remove = existing_ids - incoming_ids   # Están en la BD pero no en el payload
+
+    # 4. ELIMINAR los que sobran
+    if ids_to_remove:
+        db.query(ProductSelection).filter(
+            ProductSelection.user_id == current_user.id_users,
+            ProductSelection.product_id.in_(ids_to_remove)
+        ).delete(synchronize_session=False)
+
+    # 5. AGREGAR los que faltan
+    added_count = 0
+    if ids_to_add:
+        # Validar seguridad: Verificar que los productos a agregar existan y sean del usuario
+        # (Para evitar que alguien meta productos de otro usuario a su lista)
+        valid_products = db.query(ProductsModel).filter(
+            ProductsModel.id_products.in_(ids_to_add),
+            ProductsModel.owner_id == current_user.id_users
+        ).all()
+        
+        valid_ids_to_add = {p.id_products for p in valid_products}
+
+        new_entries = []
+        for pid in valid_ids_to_add:
+            new_entries.append(
+                ProductSelection(user_id=current_user.id_users, product_id=pid)
+            )
+        
+        if new_entries:
+            db.add_all(new_entries)
+            added_count = len(new_entries)
+
+    db.commit()
+
+    return {
+        "message": "Lista actualizada correctamente.",
+        "added": added_count,
+        "removed": len(ids_to_remove),
+        "current_total": len(incoming_ids)
+    }
+
 
 # 3. DELETE: Sacar productos de la lista
 # CORRECCIÓN: Usamos @router.delete en lugar de @router.request
