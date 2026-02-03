@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Annotated, Optional
 from sqlalchemy.sql import func
 from app.db.database import get_db
-from app.db.models import Image, User, Products, OrdersDetails, Orders
-from app.schemas import ImageCreate, ImageResponse, TopProduct
+from app.db.models import Image, User, Products, OrdersDetails, Orders, ProductSelection
+from app.schemas import ImageCreate, ImageResponse, TopProduct, ProductListInput
 from app.db.models import Products as ProductsModel, Orders as OrdersModel, OrdersDetails as OrdersDetailsModel, User, Image as ImageModel
 from app.schemas import Products as ProductsSchema, ProductsCreate, Orders as OrdersSchema, OrdersDetails as OrdersDetailsSchema
 from app.oauth import get_current_user
@@ -162,6 +162,129 @@ def obtenemos_productos(
     return [ProductsSchema.model_validate(producto_dict) for producto_dict in productos_dicts]
 
 
+
+
+
+# 1. GET: Ver productos en la lista
+@router.get("/custom-list", response_model=List[ProductsSchema], status_code=status.HTTP_200_OK)
+def get_custom_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Obtiene SOLO los productos guardados en la lista de selección."""
+    selection = (
+        db.query(ProductsModel)
+        .join(ProductSelection, ProductsModel.id_products == ProductSelection.product_id)
+        .filter(ProductSelection.user_id == current_user.id_users)
+        .options(joinedload(ProductsModel.images), joinedload(ProductsModel.category))
+        .all()
+    )
+
+    products_dicts = []
+    for producto in selection:
+        # 1. Crear una copia limpia del diccionario del modelo
+        p_dict = producto.__dict__.copy()
+        
+        # 2. ELIMINAR la clave interna de SQLAlchemy que causa el error 422
+        if "_sa_instance_state" in p_dict:
+            del p_dict["_sa_instance_state"]
+
+        # 3. Construir URLs de imágenes
+        image_urls = [f"{BASE_URL}/static/uploads/{image.file_name}" for image in producto.images]
+        
+        # 4. Actualizar el diccionario con los campos calculados
+        p_dict["image_url"] = image_urls
+        p_dict["nombre_categoria"] = producto.category.nombre_categoria if producto.category else None
+        
+        products_dicts.append(p_dict)
+
+    return [ProductsSchema.model_validate(p) for p in products_dicts]
+
+
+# 4. PUT: Sincronizar lista (Actualizar masivamente)
+@router.put("/custom-list", status_code=status.HTTP_200_OK)
+def update_custom_list(
+    payload: ProductListInput, # { "product_ids": [1, 5, 8] }
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Sincroniza la lista de selección:
+    - Agrega los IDs nuevos que no estaban.
+    - Elimina los IDs viejos que ya no vienen en la lista.
+    - Asegura que la lista final en la BD sea idéntica a la enviada.
+    """
+    # 1. Convertir la lista de entrada en un SET para operaciones rápidas
+    incoming_ids = set(payload.product_ids)
+
+    # 2. Obtener los IDs que ya existen actualmente en la BD para este usuario
+    existing_records = db.query(ProductSelection).filter(
+        ProductSelection.user_id == current_user.id_users
+    ).all()
+    existing_ids = {record.product_id for record in existing_records}
+
+    # 3. Calcular diferencias
+    ids_to_add = incoming_ids - existing_ids      # Están en el payload pero no en la BD
+    ids_to_remove = existing_ids - incoming_ids   # Están en la BD pero no en el payload
+
+    # 4. ELIMINAR los que sobran
+    if ids_to_remove:
+        db.query(ProductSelection).filter(
+            ProductSelection.user_id == current_user.id_users,
+            ProductSelection.product_id.in_(ids_to_remove)
+        ).delete(synchronize_session=False)
+
+    # 5. AGREGAR los que faltan
+    added_count = 0
+    if ids_to_add:
+        # Validar seguridad: Verificar que los productos a agregar existan y sean del usuario
+        # (Para evitar que alguien meta productos de otro usuario a su lista)
+        valid_products = db.query(ProductsModel).filter(
+            ProductsModel.id_products.in_(ids_to_add),
+            ProductsModel.owner_id == current_user.id_users
+        ).all()
+        
+        valid_ids_to_add = {p.id_products for p in valid_products}
+
+        new_entries = []
+        for pid in valid_ids_to_add:
+            new_entries.append(
+                ProductSelection(user_id=current_user.id_users, product_id=pid)
+            )
+        
+        if new_entries:
+            db.add_all(new_entries)
+            added_count = len(new_entries)
+
+    db.commit()
+
+    return {
+        "message": "Lista actualizada correctamente.",
+        "added": added_count,
+        "removed": len(ids_to_remove),
+        "current_total": len(incoming_ids)
+    }
+
+
+# 3. DELETE: Sacar productos de la lista
+# CORRECCIÓN: Usamos @router.delete en lugar de @router.request
+@router.delete("/custom-list", status_code=status.HTTP_200_OK)
+def remove_from_custom_list(
+    payload: ProductListInput, # { "product_ids": [10, 20] }
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Saca productos de la lista de selección."""
+    # Borramos solo de la tabla 'ProductSelection'
+    deleted = db.query(ProductSelection).filter(
+        ProductSelection.user_id == current_user.id_users,
+        ProductSelection.product_id.in_(payload.product_ids)
+    ).delete(synchronize_session=False)
+
+    db.commit()
+    return {"message": f"Se sacaron {deleted} productos de la lista."}
+
+
 @router.get("/{product_id}", response_model=ProductsSchema, status_code=status.HTTP_200_OK)
 def obtener_producto_id(
     product_id: Annotated[int, "ID del producto a buscar"],
@@ -203,99 +326,6 @@ def obtener_producto_id(
     # Convertimos el modelo SQLAlchemy al esquema Pydantic
     return ProductsSchema.from_orm(db_product)
 
-
-# @router.post("/", response_model=ProductsSchema, status_code=status.HTTP_201_CREATED)
-# async def crear_producto_owner_image(
-#     name: str = Form(...),
-#     description: str = Form(...),
-#     price: float = Form(...),
-#     category_id: int = Form(...),
-#     quantity: int = Form(...),
-#     file: UploadFile = File(None),  # Hacer el archivo opcional
-#     db: Session = Depends(get_db), 
-#     current_user: User = Depends(get_current_user),
-#     token: str = Depends(oauth2_scheme)
-# ):
-#     """Crea un nuevo producto asignando el owner_id del usuario autenticado, genera un pedido y detalle de pedido, y opcionalmente sube una imagen asociada."""
-#     # 1. Validar la cantidad
-#     if quantity <= 0:
-#         raise HTTPException(status_code=400, detail="La cantidad debe ser mayor que 0")
-
-#     # 2. Crear el producto
-#     db_product = ProductsModel(
-#         name=name,
-#         description=description,
-#         price=price,
-#         status="activo",  # Usar el valor por defecto de StatusEnum
-#         category_id=category_id,
-#         owner_id=current_user.id_users
-#     )
-#     db.add(db_product)
-#     db.commit()
-#     db.refresh(db_product)
-
-#     # 3. Subir la imagen si se proporciona un archivo
-#     if file:
-#         try:
-#             # Validar el tipo de archivo (solo imágenes)
-#             if not file.content_type.startswith("image/"):
-#                 raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
-
-#             # Validar la extensión del archivo
-#             allowed_extensions = {".jpg", ".jpeg", ".png", ".gif"}
-#             file_extension = f".{file.filename.split('.')[-1].lower()}"
-#             if file_extension not in allowed_extensions:
-#                 raise HTTPException(status_code=400, detail="Solo se permiten imágenes con extensiones .jpg, .jpeg, .png o .gif")
-
-#             # Generar un nombre único para el archivo
-#             unique_filename = f"{uuid.uuid4()}{file_extension}"
-#             file_path = UPLOAD_DIR / unique_filename
-
-#             # Guardar el archivo en el sistema de archivos
-#             with open(file_path, "wb") as buffer:
-#                 content = await file.read()
-#                 buffer.write(content)
-
-#             # Crear el registro de la imagen en la base de datos
-#             db_image = Image(
-#                 file_name=unique_filename,
-#                 file_path=str(file_path),
-#                 user_id=current_user.id_users,
-#                 product_id=db_product.id_products  # Asociar la imagen al producto recién creado
-#             )
-#             db.add(db_image)
-#             db.commit()
-#             db.refresh(db_image)
-#         except Exception as e:
-#             raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
-
-#     # 4. Crear un pedido (Orders) asociado al usuario autenticado
-#     db_order = OrdersModel(
-#         state="Ocupado",  # Estado inicial del pedido
-#         date_time=datetime.utcnow(),
-#         total=db_product.price * quantity,  # Total inicial basado en el precio del producto y la cantidad
-#         orderscol="Orden creada automáticamente",
-#         user_id=current_user.id_users,  # Asociar el pedido al usuario autenticado
-#         product_name=db_product.name    # Tomar el nombre del producto
-#     )
-#     db.add(db_order)
-#     db.commit()
-#     db.refresh(db_order)
-
-#     # 5. Crear un detalle de pedido (OrdersDetails) tomando datos de Products y Orders
-#     unit_price = db_product.price  # Tomar el precio del producto
-#     subtotal = quantity * unit_price  # Calcular el subtotal
-
-#     db_order_detail = OrdersDetailsModel(
-#         order_id=db_order.id_orders,  # Tomar el ID del pedido recién creado
-#         product_id=db_product.id_products,  # Tomar el ID del producto recién creado
-#         quantity=quantity,  # Usar la cantidad proporcionada en el formulario
-#         unit_price=unit_price,  # Usar el precio del producto
-#         subtotal=subtotal  # Calcular el subtotal
-#     )
-#     db.add(db_order_detail)
-#     db.commit()
-#     db.refresh(db_order_detail)
 
 #     return ProductsSchema.from_orm(db_product)
 
@@ -589,4 +619,48 @@ def eliminar_producto(
     db.commit()
     
     return None  # HTTP 204 No Content no devuelve cuerpo
+
+
+# ==========================================
+# 📋 ENDPOINTS DE LISTA DE SELECCIÓN (CUSTOM LIST)
+# ==========================================
+
+
+
+# 2. POST: Agregar productos a la lista (Sin duplicados)
+@router.post("/custom-list", status_code=status.HTTP_201_CREATED)
+def add_to_custom_list(
+    payload: ProductListInput, # { "product_ids": [10, 20] }
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Mete productos a la lista de selección."""
+    added_count = 0
+    
+    for pid in payload.product_ids:
+        # Verificar que el producto exista y sea del usuario (Seguridad)
+        product = db.query(ProductsModel).filter(
+            ProductsModel.id_products == pid, 
+            ProductsModel.owner_id == current_user.id_users
+        ).first()
+        
+        if not product: continue # Si no es mío o no existe, lo salto
+
+        # Verificar si ya está en la lista para no repetir
+        exists = db.query(ProductSelection).filter(
+            ProductSelection.user_id == current_user.id_users,
+            ProductSelection.product_id == pid
+        ).first()
+
+        if not exists:
+            new_selection = ProductSelection(
+                user_id=current_user.id_users,
+                product_id=pid
+            )
+            db.add(new_selection)
+            added_count += 1
+            
+    db.commit()
+    return {"message": f"Se agregaron {added_count} productos a la lista."}
+
 

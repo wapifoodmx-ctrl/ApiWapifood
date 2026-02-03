@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_validator, computed_field, EmailStr
+from pydantic import BaseModel, field_validator, computed_field, EmailStr, Field
 from enum import Enum
 from datetime import datetime
 from decimal import Decimal
@@ -718,3 +718,74 @@ class MenucolorResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# 🆕 Schema para Actualizar Mesero
+class WaiterUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, description="Nuevo nombre del mesero")
+    access_code: Optional[str] = Field(None, min_length=6, max_length=6, pattern=r"^\d{6}$", description="Nuevo código de 6 dígitos")
+
+
+# Schema para CREAR (Lo que envía el front)
+class WaiterCreate(BaseModel):
+    name: str = Field(..., min_length=1, description="Nombre del mesero")
+    access_code: str = Field(..., pattern=r"^\d{6}$", description="Código de 6 dígitos numéricos")
+
+# Schema para RESPONDER (Lo que devuelve la API)
+class WaiterResponse(BaseModel):
+    uuid: str
+    name: str
+    access_code: str # Opcional: podrías ocultarlo si quisieras seguridad extra
+
+    class Config:
+        from_attributes = True
+
+
+# 🆕 Schema para el login de meseros
+class WaiterLoginSchema(BaseModel):
+    email: EmailStr = Field(..., description="Correo del Restaurante (Dueño)")
+    access_code: str = Field(..., min_length=6, max_length=6, description="Código de 6 dígitos del mesero")
+
+
+# 1. Esquema simple para el mesero
+class WaiterInOrder(BaseModel):
+    name: str
+    uuid: str
+
+# 2. Esquema simple para los detalles (productos)
+class OrderDetailSimple(BaseModel):
+    pass
+# 3. ESQUEMA FINAL: Orden con Meseros
+class OrderWithWaitersResponse(BaseModel):
+    # state: str  <-- Eliminado
+    # order_status: str <-- Eliminado
+    # descuento: str <-- Eliminado
+    # total: float <-- Eliminado
+    # orderscol: Optional[str] <-- Eliminado
+    order_uuid: str
+    
+    waiters: List[WaiterInOrder] = []
+    details: List[OrderDetailSimple] = [] # Lista de detalles (ahora vacíos)
+
+    class Config:
+        from_attributes = True
+
+
+class WaiterLimitResponse(BaseModel):
+    plan_name: str
+    max_waiters: int
+    current_waiters: int
+    remaining_slots: int
+
+
+class IngredienteSeleccionado(BaseModel):
+    ingredient_id: int # El ID del microservicio (75, 74)
+    quantity: float    # Cantidad (1, 200, etc.)
+
+class AsignarRecetaSchema(BaseModel):
+    product_id: int    # El ID del producto local (APIWAPI)
+    ingredients: List[IngredienteSeleccionado]
+
+
+# --- ESQUEMA DE ENTRADA ---
+class ProductListInput(BaseModel):
+    product_ids: List[int]
