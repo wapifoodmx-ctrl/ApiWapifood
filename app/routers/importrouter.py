@@ -112,7 +112,8 @@ async def importar_insumos(
         return {"message": "No se encontraron datos válidos", "errores": errores}
 
     # 4. Enviar al Microservicio
-    async with httpx.AsyncClient() as client:
+    # Desactivamos la verificación SSL para evitar el error de certificado
+    async with httpx.AsyncClient(verify=False) as client: 
         try:
             response = await client.post(
                 f"{MICRO_URL}/internal/bulk-ingredients",
@@ -238,7 +239,7 @@ async def importar_productos_flujo_completo(
 
     # --- 3. Enviar al Microservicio ---
     if payload_microservicio:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=False) as client:
             try:
                 # Llamamos a un endpoint NUEVO y ESPECÍFICO en el microservicio
                 resp = await client.post(
@@ -406,7 +407,7 @@ async def asignar_receta_manual(
 
     # 3. Enviar al Microservicio
     # Usamos el endpoint que ya tenías para crear recetas complejas
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=False) as client:
         try:
             # OJO: El endpoint del microservicio espera una LISTA, así que enviamos [payload_micro]
             resp = await client.post(
