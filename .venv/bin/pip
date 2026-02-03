@@ -1,4 +1,4 @@
-#!/home/soportec/Desktop/WapiApi/.venv/bin/python3
+#!/home/hugo/Escritorio/WapiApi/.venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys
