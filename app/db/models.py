@@ -274,6 +274,8 @@ class OrdersDetails(Base):
     quantity = Column(Integer)
     unit_price = Column(Decimal(10, 2))  
     subtotal = Column(Decimal(10, 2))
+    # AGREGAR ESTA LÍNEA:
+    comments = Column(String(255), nullable=True)
     order_detail_status = Column(SQLAlchemyEnum(OrderStatusEnum), default=OrderStatusEnum.Pendiente)  # Nueva columna para estatus 
     #costo_producion = Column(Decimal(10, 2), nullable=False, default=0.00)  # Nueva columna
     utilidades = Column(Decimal(10, 2), nullable=True)  # Nueva columna para utilidades

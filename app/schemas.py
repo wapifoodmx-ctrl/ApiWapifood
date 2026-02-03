@@ -156,6 +156,20 @@ class Orders(BaseModel):
 #     class Config:
 #         from_attributes = True
 
+class OrderDetailItem(BaseModel):
+    id_orders_details: int | None = None  # Nuevo campo para id_orders_details
+    product_id: Optional[int] = None
+    product_name: str
+    quantity: int
+    unit_price: Decimal
+    subtotal: Decimal
+    order_detail_status: OrderStatusEnum 
+    # AGREGAR ESTA LÍNEA:
+    comments: Optional[str] = "" 
+
+    class Config:
+        from_attributes = True
+
 class OrderCreateResponse(BaseModel):
     id_orders: int | None = None
     state: RoleOrders
@@ -170,6 +184,7 @@ class OrderCreateResponse(BaseModel):
     mesa_id: int  # ID de la mesa asignada
     mesa_number: int  | None = None # Número de la mesa asignada
     order_uuid: str  # Nuevo campo para el UUID único de la orden
+    order_details: List[OrderDetailItem]
 
     class Config:
         from_attributes = True
@@ -213,17 +228,7 @@ class Tables(BaseModel):
         from_attributes = True
 
 
-class OrderDetailItem(BaseModel):
-    id_orders_details: int | None = None  # Nuevo campo para id_orders_details
-    product_id: Optional[int] = None
-    product_name: str
-    quantity: int
-    unit_price: Decimal
-    subtotal: Decimal
-    order_detail_status: OrderStatusEnum 
 
-    class Config:
-        from_attributes = True
 
 class OrderDetailsByUUIDResponse(BaseModel):
     id_orders: int | None = None
@@ -789,3 +794,19 @@ class AsignarRecetaSchema(BaseModel):
 # --- ESQUEMA DE ENTRADA ---
 class ProductListInput(BaseModel):
     product_ids: List[int]
+
+
+# Esquema para recibir un comentario por detalle
+class DetailCommentInput(BaseModel):
+    id_orders_details: int
+    comment: str
+
+# Esquema para recibir la lista completa en el POST
+class OrderCommentsRequest(BaseModel):
+    comments: List[DetailCommentInput]
+
+# Esquema para devolver los comentarios en el GET
+class OrderCommentResponse(BaseModel):
+    id_orders_details: int
+    product_name: str
+    comment: Optional[str] = ""

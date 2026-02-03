@@ -8,7 +8,7 @@ import logging
 from uuid import uuid4, UUID
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem, OrderCommentResponse, OrderCommentsRequest
 from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel, UserConfirmationCode
@@ -320,6 +320,7 @@ async def crear_orden(
 #------------------------------------------
 #------------------------------------------
 
+
 @router.get("/orders", response_model=List[OrdersResponse], status_code=status.HTTP_200_OK)
 def obtenemos_orders_details(
     db: Session = Depends(get_db),
@@ -612,6 +613,72 @@ async def finalizar_orden(
 ##--------------------------------------------
 #------------------------------------------
 
+
+# -----------------------------------------------------------------------------
+# 📺 ENDPOINT GET KIOSCO: VER ÓRDENES ACTIVAS CON TICKET
+# -----------------------------------------------------------------------------
+@router.get("/kiosko", response_model=List[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK)
+def get_kiosko_orders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene las órdenes generadas por Kiosco (o cualquier orden con Ticket activo).
+    Filtra órdenes que:
+    1. Tienen ticket_number asignado.
+    2. NO están Canceladas.
+    """
+    # Filtramos las órdenes que tienen ticket y son del día de hoy
+    today = datetime.now().replace(hour=0, minute=0, second=0)
+    
+    orders = db.query(OrdersModel).filter(
+        OrdersModel.user_id == current_user.id_users,
+        OrdersModel.ticket_number.is_not(None), # Clave: Tiene ticket
+        OrdersModel.date_time >= today,
+        OrdersModel.order_status != OrderStatusEnum.Cancelado
+    ).order_by(OrdersModel.ticket_number.desc()).options(
+        joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
+        joinedload(OrdersModel.table),
+        joinedload(OrdersModel.user).joinedload(User.user_info)
+    ).all()
+
+    # Formatear respuesta
+    responses = []
+    for order in orders:
+        product_details = [
+            OrderDetailItem(
+                id_orders_details=d.id_orders_details,
+                product_id=d.product_id,
+                product_name=d.product.name if d.product else "N/A", # ✅ Evita el error de Pydantic
+                quantity=d.quantity,
+                unit_price=float(d.unit_price or 0),
+                subtotal=float(d.subtotal or 0),
+                order_detail_status=d.order_detail_status,
+                descuento_details=d.descuento_details or "0",
+                comments=d.comments # 👈 AGREGADO: Para ver los comentarios en el Kiosco/Cocina
+            ) for d in order.order_details
+        ]
+        
+        restaurant_name = order.user.user_info.nombre_restaurante if (order.user and order.user.user_info) else "Kiosco"
+        mesa_num = order.table.number if order.table else 0
+
+        resp = OrderDetailsByUUIDResponse(
+            id_orders=order.id_orders,
+            mesa_number=mesa_num,
+            restaurant_name=restaurant_name,
+            order_uuid=order.order_uuid,
+            date_time=order.date_time,
+            state=order.state,
+            order_status=order.order_status,
+            products=product_details,
+            descuento=order.descuento or 0.0,
+            total=float(order.total or 0),
+            metodo_pago=order.metodo_pago,
+            ticket_number=order.ticket_number
+        )
+        responses.append(resp)
+
+    return responses
 
 
 
@@ -1491,10 +1558,13 @@ def get_latest_orders_by_plan(
 # -----------------------------------------------------------------------------
 # 🏪 ENDPOINT KIOSCO: CREAR ORDEN + TICKET AUTOMÁTICO
 # -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# 🏪 ENDPOINT KIOSCO: CREAR ORDEN + TICKET AUTOMÁTICO
+# -----------------------------------------------------------------------------
 @router.post("/kiosko", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED)
 async def crear_orden_kiosko(
-    product_ids: str = Form(...),
-    quantities: str = Form(...),
+    product_ids: str = Form(..., description="Lista de IDs separados por comas"),
+    quantities: str = Form(..., description="Lista de cantidades separadas por comas"),
     metodo_pago: PaymentMethodEnum = Form(PaymentMethodEnum.tarjeta), # Kiosco suele ser tarjeta
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1503,15 +1573,17 @@ async def crear_orden_kiosko(
     """
     Crea una orden desde el Kiosco.
     DIFERENCIA: Asigna número de ticket INMEDIATAMENTE y estado 'Pendiente' (directo a cocina).
-    No requiere mesa (o usa mesa 0/virtual).
+    Usa la Mesa 1 (Punto de Venta) para asignar la venta.
     """
-    # 1. Parsear listas (Igual que en crear_orden)
+    # 1. Parsear listas
     try:
         p_ids = [int(x) for x in product_ids.split(",")]
         qtys = [int(x) for x in quantities.split(",")]
-    except: raise HTTPException(400, "Formato inválido")
+    except: 
+        raise HTTPException(400, "Formato inválido en IDs o cantidades")
     
-    if len(p_ids) != len(qtys): raise HTTPException(400, "Listas no coinciden")
+    if len(p_ids) != len(qtys): 
+        raise HTTPException(400, "La cantidad de productos no coincide con las cantidades")
 
     # 2. Generar Ticket Inmediato
     # Buscamos el último ticket del usuario y sumamos 1
@@ -1522,27 +1594,36 @@ async def crear_orden_kiosko(
     
     next_ticket = (int(last_ticket.ticket_number) + 1) if (last_ticket and last_ticket.ticket_number) else 1
 
-    # 3. Calcular Total y Productos
+    # 3. Calcular Total y Validar Productos
     total = 0.0
-    products_db = []
+    products_db = [] # Guardamos los objetos aquí para usarlos al final (nombre del producto)
     product_names = []
     
     for idx, pid in enumerate(p_ids):
         prod = db.query(ProductsModel).filter(ProductsModel.id_products == pid).first()
-        if not prod: raise HTTPException(404, f"Producto {pid} no encontrado")
+        if not prod: 
+            raise HTTPException(404, f"Producto {pid} no encontrado")
         
+        # Validar propiedad del producto
+        if prod.owner_id != current_user.id_users:
+            raise HTTPException(403, f"No tienes permiso sobre el producto {pid}")
+
         subtotal = float(prod.price) * qtys[idx]
         total += subtotal
+        
+        # Guardamos la info necesaria para no volver a consultar la BD
         products_db.append({"prod": prod, "qty": qtys[idx], "sub": subtotal})
         product_names.append(prod.name)
 
-    # 4. Crear Orden
-    # Usamos una "Mesa Virtual" para Kiosco (ej. Mesa 0 o NULL si tu DB lo permite)
-    # Si tu DB exige mesa_id, asegúrate de tener una mesa "Kiosco" creada o usa la mesa 1.
-    # Aquí asumiremos que usas la Mesa 1 (Punto de Venta) o una lógica de mesa nula.
-    # Para no romper tu FK, busquemos la mesa 1 del usuario.
-    mesa_kiosco = db.query(TablesModel).filter(TablesModel.user_id == current_user.id_users, TablesModel.number == 1).first()
-    if not mesa_kiosco: raise HTTPException(400, "No se encontró mesa para asignar (Mesa 1 requerida)")
+    # 4. Crear Orden (Cabecera)
+    # Buscamos la Mesa 1 del usuario para asignarla (Kiosco = POS)
+    mesa_kiosco = db.query(TablesModel).filter(
+        TablesModel.user_id == current_user.id_users, 
+        TablesModel.number == 1
+    ).first()
+    
+    if not mesa_kiosco: 
+        raise HTTPException(400, "No se encontró la Mesa 1 (requerida para Kiosco)")
 
     new_order = OrdersModel(
         mesa_id=mesa_kiosco.id_tables,
@@ -1556,13 +1637,13 @@ async def crear_orden_kiosko(
         user_id=current_user.id_users,
         order_uuid=str(uuid4()),
         metodo_pago=metodo_pago,
-        ticket_number=next_ticket # <--- AQUÍ ESTÁ LA CLAVE
+        ticket_number=next_ticket # <--- ASIGNACIÓN DE TICKET AL CREAR
     )
     db.add(new_order)
     db.commit()
     db.refresh(new_order)
 
-    # 5. Crear Detalles
+    # 5. Crear Detalles (Renglones de la orden)
     for item in products_db:
         det = OrdersDetailsModel(
             order_id=new_order.id_orders,
@@ -1571,94 +1652,142 @@ async def crear_orden_kiosko(
             unit_price=float(item["prod"].price),
             subtotal=item["sub"],
             order_detail_status=OrderStatusEnum.Pendiente,
-            descuento_details="0"
+            descuento_details="0",
+            # comments="" # Descomenta si ya migraste la columna comments
         )
         db.add(det)
     
-    # 6. Descontar Inventario (Opcional: Si el kiosco cobra y entrega, se descuenta ya)
-    # Si prefieres descontar hasta que cocina marque "Listo", comenta esto.
-    # Pero usualmente en Kiosco se descuenta al vender.
+    # 6. Descontar Inventario
+    # Intentamos descontar, si falla el microservicio, no detenemos la venta pero lo logueamos
     try:
         items_inv = [{"product_id": p["prod"].id_products, "quantity": p["qty"]} for p in products_db]
         headers = {"Authorization": f"Bearer {token}"}
-        requests.post(f"{INVENTORY_API_URL}/inventory/discount-stock-multiple/", 
-                      json={"items": items_inv, "ticket_number": next_ticket}, 
-                      headers=headers)
+        # Nota: verify=False para evitar errores de certificado SSL locales
+        requests.post(
+            f"{INVENTORY_API_URL}/inventory/discount-stock-multiple/", 
+            json={"items": items_inv, "ticket_number": next_ticket}, 
+            headers=headers,
+            verify=False 
+        )
     except Exception as e:
-        print(f"Error inventario kiosco: {e}")
+        print(f"⚠️ Error al descontar inventario en Kiosco: {e}")
 
     db.commit()
+    db.refresh(new_order) # Refrescamos para obtener los IDs de los detalles creados
+
+    # 7. Construir Respuesta Manualmente (CORRECCIÓN DEL ERROR PYDANTIC)
+    # Mapeamos los datos manualmente para asegurar que 'product_name' esté presente
+    details_response = []
     
-    # Retornar respuesta
-    resp = OrderCreateResponse.from_orm(new_order)
-    resp.mesa_id = new_order.mesa_id
-    resp.mesa_number = 1
-    resp.order_uuid = new_order.order_uuid
-    return resp
+    for detail in new_order.order_details:
+        # Buscamos el nombre en nuestra lista local 'products_db' para eficiencia
+        prod_obj = next((item["prod"] for item in products_db if item["prod"].id_products == detail.product_id), None)
+        prod_name_str = prod_obj.name if prod_obj else "Desconocido"
+
+        details_response.append({
+            "id_orders_details": detail.id_orders_details,
+            "product_id": detail.product_id,
+            "product_name": prod_name_str, # <--- AQUÍ SE SOLUCIONA EL ERROR "Field required"
+            "quantity": detail.quantity,
+            "unit_price": detail.unit_price,
+            "subtotal": detail.subtotal,
+            "descuento_details": detail.descuento_details,
+            "order_detail_status": detail.order_detail_status,
+            # "comments": detail.comments # Descomenta si ya migraste
+        })
+
+    # Retornamos el diccionario final
+    return {
+        "id_orders": new_order.id_orders,
+        "order_uuid": new_order.order_uuid,
+        "mesa_id": new_order.mesa_id,
+        "mesa_number": 1, 
+        "state": new_order.state,
+        "order_status": new_order.order_status,
+        "date_time": new_order.date_time,
+        "descuento": new_order.descuento,
+        "total": new_order.total,
+        "orderscol": new_order.orderscol,
+        "user_id": new_order.user_id,
+        "product_name": new_order.product_name,
+        "metodo_pago": new_order.metodo_pago,
+        "ticket_number": new_order.ticket_number,
+        "order_details": details_response # <--- Lista construida manualmente
+    }
 
 
 
-# -----------------------------------------------------------------------------
-# 📺 ENDPOINT GET KIOSCO: VER ÓRDENES ACTIVAS CON TICKET
-# -----------------------------------------------------------------------------
-@router.get("/kiosko", response_model=List[OrderDetailsByUUIDResponse], status_code=status.HTTP_200_OK)
-def get_kiosko_orders(
+
+# =============================================================================
+# 📝 ENDPOINTS DE COMENTARIOS (NOTAS DE COCINA)
+# =============================================================================
+
+@router.post("/{order_uuid}/comments", status_code=status.HTTP_200_OK, description="Agrega o actualiza comentarios en los detalles de una orden existente.")
+async def agregar_comentarios_orden(
+    order_uuid: str,
+    payload: OrderCommentsRequest, # Recibe un JSON con la lista de IDs y comentarios
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Obtiene las órdenes generadas por Kiosco (o cualquier orden con Ticket activo).
-    Filtra órdenes que:
-    1. Tienen ticket_number asignado.
-    2. NO están Canceladas (y opcionalmente si quieres ver las finalizadas o solo las pendientes).
-    """
-    # Filtramos las órdenes que tienen ticket y son del día de hoy (opcional, para no traer historial eterno)
-    today = datetime.now().replace(hour=0, minute=0, second=0)
+    # 1. Verificar que la orden exista y pertenezca al usuario
+    db_order = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).first()
+
+    if not db_order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada o sin permisos")
+
+    # 2. Actualizar cada detalle con su respectivo comentario
+    # Extraemos todos los IDs que vienen en el payload
+    ids_a_modificar = [item.id_orders_details for item in payload.comments]
     
-    orders = db.query(OrdersModel).filter(
-        OrdersModel.user_id == current_user.id_users,
-        OrdersModel.ticket_number.is_not(None), # Clave: Tiene ticket
-        OrdersModel.date_time >= today,
-        OrdersModel.order_status != OrderStatusEnum.Cancelado
-    ).order_by(OrdersModel.ticket_number.desc()).options(
-        joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product),
-        joinedload(OrdersModel.table),
-        joinedload(OrdersModel.user).joinedload(User.user_info)
+    # Buscamos esos detalles en la BD que pertenezcan a esta orden
+    db_details = db.query(OrdersDetailsModel).filter(
+        OrdersDetailsModel.order_id == db_order.id_orders,
+        OrdersDetailsModel.id_orders_details.in_(ids_a_modificar)
     ).all()
 
-    # Formatear respuesta (Reutilizamos tu lógica de respuesta detallada)
-    responses = []
-    for order in orders:
-        product_details = [
-            OrderDetailItem(
-                id_orders_details=d.id_orders_details,
-                product_id=d.product_id,
-                product_name=d.product.name if d.product else "N/A",
-                quantity=d.quantity,
-                unit_price=float(d.unit_price or 0),
-                subtotal=float(d.subtotal or 0),
-                order_detail_status=d.order_detail_status,
-                descuento_details=d.descuento_details or "0"
-            ) for d in order.order_details
-        ]
-        
-        restaurant_name = order.user.user_info.nombre_restaurante if (order.user and order.user.user_info) else "Kiosco"
-        mesa_num = order.table.number if order.table else 0
+    # Creamos un mapa (diccionario) para búsqueda rápida
+    details_map = {d.id_orders_details: d for d in db_details}
 
-        resp = OrderDetailsByUUIDResponse(
-            id_orders=order.id_orders,
-            mesa_number=mesa_num,
-            restaurant_name=restaurant_name,
-            order_uuid=order.order_uuid,
-            date_time=order.date_time,
-            state=order.state,
-            order_status=order.order_status,
-            products=product_details,
-            descuento=order.descuento or 0.0,
-            total=float(order.total or 0),
-            metodo_pago=order.metodo_pago,
-            ticket_number=order.ticket_number
-        )
-        responses.append(resp)
+    comentarios_agregados = 0
+    for input_comment in payload.comments:
+        detail_obj = details_map.get(input_comment.id_orders_details)
+        if detail_obj:
+            detail_obj.comments = input_comment.comment
+            db.add(detail_obj)
+            comentarios_agregados += 1
 
-    return responses
+    db.commit()
+
+    return {
+        "message": f"Se actualizaron {comentarios_agregados} comentarios en la orden {order_uuid}"
+    }
+
+
+@router.get("/{order_uuid}/comments", response_model=List[OrderCommentResponse], status_code=status.HTTP_200_OK, description="Obtiene los comentarios de todos los platillos de una orden.")
+async def obtener_comentarios_orden(
+    order_uuid: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 1. Verificar la orden
+    db_order = db.query(OrdersModel).filter(
+        OrdersModel.order_uuid == order_uuid,
+        OrdersModel.user_id == current_user.id_users
+    ).options(joinedload(OrdersModel.order_details).joinedload(OrdersDetailsModel.product)).first()
+
+    if not db_order:
+        raise HTTPException(status_code=404, detail="Orden no encontrada")
+
+    # 2. Formatear la respuesta
+    resultado = []
+    for detail in db_order.order_details:
+        resultado.append(OrderCommentResponse(
+            id_orders_details=detail.id_orders_details,
+            product_name=detail.product.name if detail.product else "Desconocido",
+            comment=detail.comments if detail.comments else ""
+        ))
+
+    return resultado
