@@ -306,17 +306,60 @@ async def crear_orden(
     db.commit()
     db.refresh(db_table)
 
-    # 11. Refrescar la orden para la respuesta y actualizar estado final
-    db_order = existing_order or db_order
-    db.refresh(db_order)
+    # # 11. Refrescar la orden para la respuesta y actualizar estado final
+    # db_order = existing_order or db_order
+    # db.refresh(db_order)
 
-    # 12. Crear respuesta con el número de mesa
-    order_response = OrderCreateResponse.from_orm(db_order)
-    order_response.mesa_id = db_order.mesa_id
-    order_response.mesa_number = db_table.number
-    order_response.order_uuid = db_order.order_uuid
+    # # 12. Crear respuesta con el número de mesa
+    # order_response = OrderCreateResponse.from_orm(db_order)
+    # order_response.mesa_id = db_order.mesa_id
+    # order_response.mesa_number = db_table.number
+    # order_response.order_uuid = db_order.order_uuid
 
-    return order_response
+    # return order_response
+
+    # -----------------------------------------------------------------------
+    # 🚨 CORRECCIÓN OBLIGATORIA: Construcción manual de la respuesta
+    # -----------------------------------------------------------------------
+    # Esto evita el error "product_name Field required"
+    
+    details_response = []
+    for detail in db_order.order_details:
+        # Obtenemos el nombre del producto de la relación (si está cargada)
+        p_name = "Desconocido"
+        if detail.product:
+            p_name = detail.product.name
+        
+        details_response.append({
+            "id_orders_details": detail.id_orders_details,
+            "product_id": detail.product_id,
+            "product_name": p_name, # 👈 AQUÍ ASIGNAMOS EL NOMBRE MANUALMENTE
+            "quantity": detail.quantity,
+            "unit_price": detail.unit_price,
+            "subtotal": detail.subtotal,
+            "descuento_details": detail.descuento_details,
+            "order_detail_status": detail.order_detail_status,
+            "comments": detail.comments # Agregamos los comentarios
+        })
+
+    # Retornamos el diccionario directo (FastAPI lo convertirá al Schema automáticamente)
+    return {
+        "id_orders": db_order.id_orders,
+        "order_uuid": db_order.order_uuid,
+        "mesa_id": db_order.mesa_id,
+        "mesa_number": db_table.number,
+        "state": db_order.state,
+        "order_status": db_order.order_status,
+        "date_time": db_order.date_time,
+        "descuento": db_order.descuento,
+        "total": db_order.total,
+        "orderscol": db_order.orderscol,
+        "user_id": db_order.user_id,
+        "product_name": db_order.product_name,
+        "metodo_pago": db_order.metodo_pago,
+        "ticket_number": db_order.ticket_number,
+        "order_details": details_response # 👈 Lista construida manualmente
+    }
 #------------------------------------------
 #------------------------------------------
 
