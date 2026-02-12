@@ -1,0 +1,15 @@
+[33m8e37a604[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: reset: moving to origin/master
+[33m136ffe32[m HEAD@{1}: commit: Elimina tracking de __pycache__ y archivos .pyc
+[33mf48cbecb[m HEAD@{2}: commit: Cambios en free, imporrt router
+[33m57d35baf[m HEAD@{3}: commit: Cambios products 25012026
+[33m77765885[m HEAD@{4}: commit: Cambios payments, products, tables, free, payments, chatbot 25012026
+[33mba73c4c0[m HEAD@{5}: commit: Cambios en importrouter lsito para produccion
+[33md0c3a198[m HEAD@{6}: commit: CHATBOT ROUTER, SCHEMAS Y IMPORTROUTER CAMBIOS
+[33m5df6545d[m HEAD@{7}: commit: Se modifica el chatbot y un nuevo paquete
+[33m74cc279b[m HEAD@{8}: commit: Modificaciones en free, orders, y payments
+[33md796d8be[m HEAD@{9}: commit: CAmbios en orders 17dic2025
+[33me74f549e[m HEAD@{10}: commit: Se modifica modified: app/routers/auth.py
+[33m1942c71c[m HEAD@{11}: commit: Se modifica aouth, schemas, y se agregan nuevos routers agregar plan de meseros
+[33mf6dc8db3[m HEAD@{12}: commit: Se moficia orders para un nuevo enpoint de get
+[33me6a54074[m HEAD@{13}: commit: Se arreglan models menucolors y urls de produccion
+[33m5f8adc7d[m HEAD@{14}: clone: from https://github.com/JuanMario0/WapiApi.git

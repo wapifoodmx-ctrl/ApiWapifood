@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey, Float, Boolean
+from sqlalchemy import Column, Integer, String, Enum as SQLAlchemyEnum, DateTime, ForeignKey, Float, Boolean, Text
 import sqlalchemy as sa
 from sqlalchemy.types import DECIMAL as Decimal  # 🛠️ Corrección
 from sqlalchemy.orm import relationship
@@ -404,4 +404,43 @@ class ProductSelection(Base):
     product_id = Column(Integer, ForeignKey("products.id_products"))
     
     # Relación para poder traer los datos del producto fácilmente
+    product = relationship("Products")
+
+# 1. Tabla para la Cabecera del Pedido Web
+class WebOrders(Base):
+    __tablename__ = "web_orders"
+
+    id_web_orders = Column(Integer, primary_key=True, index=True)
+    uuid_restaurant = Column(String(100), nullable=False) # UUID del dueño/restaurante
+    user_id = Column(Integer, ForeignKey("users.id_users")) # Relación con el dueño
+    
+    # Datos del Cliente (Usamos Text para que quepa todo lo que quieras)
+    customer_name = Column(String(150))
+    customer_phone = Column(String(50))
+    customer_address = Column(Text) # Dirección completa
+    customer_notes = Column(Text)   # Referencias o notas generales
+    
+    total = Column(Float, default=0.0)
+    status = Column(String(50), default="PENDIENTE") # PENDIENTE, ACEPTADO, RECHAZADO
+    created_at = Column(DateTime, default=datetime.now)
+
+    # Relaciones
+    owner = relationship("User") 
+    details = relationship("WebOrderDetails", back_populates="web_order")
+
+# 2. Tabla para los Detalles del Pedido Web
+class WebOrderDetails(Base):
+    __tablename__ = "web_order_details"
+
+    id_web_details = Column(Integer, primary_key=True, index=True)
+    web_order_id = Column(Integer, ForeignKey("web_orders.id_web_orders"))
+    product_id = Column(Integer, ForeignKey("products.id_products"))
+    
+    quantity = Column(Integer)
+    unit_price = Column(Float)
+    subtotal = Column(Float)
+    comment = Column(String(255)) # Comentario específico del producto (sin cebolla, etc)
+
+    # Relaciones
+    web_order = relationship("WebOrders", back_populates="details")
     product = relationship("Products")

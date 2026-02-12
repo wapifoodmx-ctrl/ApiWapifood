@@ -73,3 +73,4 @@ groq
 pandas
 openpyxl
 python-multipart
+resend

@@ -7,8 +7,8 @@ from typing import List
 import logging
 from uuid import uuid4, UUID
 from app.db.database import get_db
-from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem, OrderCommentResponse, OrderCommentsRequest
+from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments, WebOrders, WebOrderDetails, UserInfo
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem, OrderCommentResponse, OrderCommentsRequest, OrderFullCommentsResponse, WebItemInput, WebCustomerInput, WebOrderCreateRequest, WebDetailResponse, WebOrderResponse
 from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel, UserConfirmationCode
@@ -317,6 +317,11 @@ async def crear_orden(
     # order_response.order_uuid = db_order.order_uuid
 
     # return order_response
+    if existing_order:
+        db_order = existing_order
+    
+    # Ahora sí, refrescamos la orden para tener los datos más recientes
+    db.refresh(db_order)
 
     # -----------------------------------------------------------------------
     # 🚨 CORRECCIÓN OBLIGATORIA: Construcción manual de la respuesta
@@ -1764,15 +1769,19 @@ async def crear_orden_kiosko(
 # =============================================================================
 # 📝 ENDPOINTS DE COMENTARIOS (NOTAS DE COCINA)
 # =============================================================================
+# =============================================================================
+# 📝 ENDPOINTS DE COMENTARIOS (Reciclando 'orderscol' para el General)
+# =============================================================================
 
-@router.post("/{order_uuid}/comments", status_code=status.HTTP_200_OK, description="Agrega o actualiza comentarios en los detalles de una orden existente.")
+@router.post("/{order_uuid}/comments", status_code=status.HTTP_200_OK, 
+             description="Agrega comentarios. El 'general' se guarda en la columna existente 'orderscol")
 async def agregar_comentarios_orden(
     order_uuid: str,
-    payload: OrderCommentsRequest, # Recibe un JSON con la lista de IDs y comentarios
+    payload: OrderCommentsRequest, 
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Verificar que la orden exista y pertenezca al usuario
+    # 1. Verificar la orden
     db_order = db.query(OrdersModel).filter(
         OrdersModel.order_uuid == order_uuid,
         OrdersModel.user_id == current_user.id_users
@@ -1781,41 +1790,69 @@ async def agregar_comentarios_orden(
     if not db_order:
         raise HTTPException(status_code=404, detail="Orden no encontrada o sin permisos")
 
-    # 2. Actualizar cada detalle con su respectivo comentario
-    # Extraemos todos los IDs que vienen en el payload
-    ids_a_modificar = [item.id_orders_details for item in payload.comments]
-    
-    # Buscamos esos detalles en la BD que pertenezcan a esta orden
-    db_details = db.query(OrdersDetailsModel).filter(
-        OrdersDetailsModel.order_id == db_order.id_orders,
-        OrdersDetailsModel.id_orders_details.in_(ids_a_modificar)
-    ).all()
+    # ---------------------------------------------------------
+    # A. Guardar Comentario General (Reciclando 'orderscol')
+    # ---------------------------------------------------------
+    if payload.general_comment:
+        # Nota: 'orderscol' suele tener info de origen (ej: "Orden Kiosco"). 
+        # No queremos borrar eso, así que lo concatenamos o reemplazamos según prefieras.
+        
+        current_text = db_order.orderscol if db_order.orderscol else ""
+        
+        # Lógica: Si el comentario ya existe en el texto, no lo duplicamos.
+        # Si es un texto nuevo, lo agregamos con un separador " | Notas: "
+        if "Notas:" not in current_text:
+             db_order.orderscol = f"{current_text} | Notas: {payload.general_comment}"
+        else:
+             # Si ya había notas, reemplazamos la parte de las notas (lógica simple: sobrescribir todo para actualizar)
+             # Opción simple: Sobrescribir conservando el origen si es posible, o simplemente reemplazar:
+             # db_order.orderscol = payload.general_comment # (Usa esto si no te importa borrar "Orden Kiosco")
+             
+             # Opción Segura (Concatenar):
+             parts = current_text.split(" | Notas: ")
+             origen = parts[0]
+             db_order.orderscol = f"{origen} | Notas: {payload.general_comment}"
+             
+        db.add(db_order)
 
-    # Creamos un mapa (diccionario) para búsqueda rápida
-    details_map = {d.id_orders_details: d for d in db_details}
-
+    # ---------------------------------------------------------
+    # B. Guardar Comentarios de Detalles (Columna 'comments')
+    # ---------------------------------------------------------
     comentarios_agregados = 0
-    for input_comment in payload.comments:
-        detail_obj = details_map.get(input_comment.id_orders_details)
-        if detail_obj:
-            detail_obj.comments = input_comment.comment
-            db.add(detail_obj)
-            comentarios_agregados += 1
+    if payload.details_comments:
+        ids_a_modificar = [item.id_orders_details for item in payload.details_comments]
+        
+        db_details = db.query(OrdersDetailsModel).filter(
+            OrdersDetailsModel.order_id == db_order.id_orders,
+            OrdersDetailsModel.id_orders_details.in_(ids_a_modificar)
+        ).all()
+
+        details_map = {d.id_orders_details: d for d in db_details}
+
+        for input_comment in payload.details_comments:
+            detail_obj = details_map.get(input_comment.id_orders_details)
+            if detail_obj:
+                detail_obj.comments = input_comment.comment
+                db.add(detail_obj)
+                comentarios_agregados += 1
 
     db.commit()
 
     return {
-        "message": f"Se actualizaron {comentarios_agregados} comentarios en la orden {order_uuid}"
+        "message": "Comentarios actualizados",
+        "general_updated": bool(payload.general_comment),
+        "details_updated_count": comentarios_agregados
     }
 
 
-@router.get("/{order_uuid}/comments", response_model=List[OrderCommentResponse], status_code=status.HTTP_200_OK, description="Obtiene los comentarios de todos los platillos de una orden.")
+@router.get("/{order_uuid}/comments", response_model=OrderFullCommentsResponse, status_code=status.HTTP_200_OK, 
+            description="Obtiene comentarios. Extrae el general de 'orderscol'.")
 async def obtener_comentarios_orden(
     order_uuid: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # 1. Verificar la orden
+    # 1. Buscar orden
     db_order = db.query(OrdersModel).filter(
         OrdersModel.order_uuid == order_uuid,
         OrdersModel.user_id == current_user.id_users
@@ -1824,13 +1861,332 @@ async def obtener_comentarios_orden(
     if not db_order:
         raise HTTPException(status_code=404, detail="Orden no encontrada")
 
-    # 2. Formatear la respuesta
-    resultado = []
+    # 2. Extraer Comentario General de 'orderscol'
+    # 'orderscol' se ve así: "Orden Kiosco | Notas: Entregar atrás"
+    full_text = db_order.orderscol if db_order.orderscol else ""
+    general_comm = ""
+    
+    if " | Notas: " in full_text:
+        parts = full_text.split(" | Notas: ")
+        if len(parts) > 1:
+            general_comm = parts[1] # Tomamos solo lo que está después del separador
+    elif full_text and "Orden" not in full_text: 
+        # Si el texto NO parece ser un status del sistema, asumimos que es todo un comentario
+        general_comm = full_text
+
+    # 3. Formatear lista de detalles
+    lista_detalles = []
     for detail in db_order.order_details:
-        resultado.append(OrderCommentResponse(
-            id_orders_details=detail.id_orders_details,
-            product_name=detail.product.name if detail.product else "Desconocido",
-            comment=detail.comments if detail.comments else ""
+        lista_detalles.append({
+            "id_orders_details": detail.id_orders_details,
+            "product_name": detail.product.name if detail.product else "Desconocido",
+            "comment": detail.comments if detail.comments else ""
+        })
+
+    # 4. Retornar
+    return OrderFullCommentsResponse(
+        order_uuid=db_order.order_uuid,
+        general_comment=general_comm,
+        details_comments=lista_detalles
+    )
+
+
+# =============================================================================
+# 🌐 NUEVOS ENDPOINTS: PEDIDOS WEB / COTIZACIONES (SISTEMA PARALELO)
+# =============================================================================
+
+@router.post("/web/create", status_code=status.HTTP_201_CREATED, summary="Crea una Pre-Orden Web")
+async def crear_pedido_web(
+    restaurant_uuid: str, # Query param: ?restaurant_uuid=...
+    payload: WebOrderCreateRequest,
+    db: Session = Depends(get_db)
+):
+   
+    # 1. Buscar al Dueño del Restaurante por su UUID
+    # 🔴 CAMBIO: Importamos 'User' y buscamos ahí, porque UserInfo no tiene uuid
+    from app.db.models import User, WebOrders, WebOrderDetails 
+    
+    # Buscamos directamente en la tabla User
+    owner_user = db.query(User).filter(User.uuid == restaurant_uuid).first()
+    
+    if not owner_user:
+        raise HTTPException(status_code=404, detail="Restaurante no encontrado (UUID inválido)")
+    
+    owner_id = owner_user.id_users
+
+    # 2. Calcular Totales y Validar Productos
+    total_order = 0.0
+    items_to_create = []
+
+    for item in payload.items:
+        prod = db.query(ProductsModel).filter(ProductsModel.id_products == item.product_id).first()
+        if not prod:
+            raise HTTPException(404, detail=f"Producto {item.product_id} no existe")
+        
+        if prod.owner_id != owner_id:
+             raise HTTPException(400, detail=f"Producto {prod.name} no pertenece a este restaurante")
+
+        subtotal = float(prod.price) * item.quantity
+        total_order += subtotal
+        
+        items_to_create.append({
+            "product": prod,
+            "qty": item.quantity,
+            "sub": subtotal,
+            "comment": item.comment
+        })
+
+    # 3. Formatear Dirección Completa
+    full_address = f"{payload.customer.direccion}, CP: {payload.customer.codigo_postal}"
+
+    # 4. Crear la Cabecera (WebOrders)
+    new_web_order = WebOrders(
+        uuid_restaurant=restaurant_uuid,
+        user_id=owner_id,
+        customer_name=payload.customer.nombre,
+        customer_phone=payload.customer.telefono,
+        customer_address=full_address,
+        customer_notes=payload.customer.referencias,
+        total=total_order,
+        status="PENDIENTE", # Estatus propio, no del Enum
+        created_at=datetime.now()
+    )
+    db.add(new_web_order)
+    db.commit()
+    db.refresh(new_web_order)
+
+    # 5. Crear los Detalles (WebOrderDetails)
+    for data in items_to_create:
+        detail = WebOrderDetails(
+            web_order_id=new_web_order.id_web_orders,
+            product_id=data["product"].id_products,
+            quantity=data["qty"],
+            unit_price=float(data["product"].price),
+            subtotal=data["sub"],
+            comment=data["comment"]
+        )
+        db.add(detail)
+    
+    db.commit()
+
+    return {"message": "Pre-orden creada exitosamente", "web_order_id": new_web_order.id_web_orders}
+
+
+@router.get("/web/list", response_model=List[WebOrderResponse])
+def listar_pedidos_web(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    El dueño ve sus pedidos web pendientes.
+    """
+    # Traemos las órdenes de la tabla NUEVA
+    web_orders = db.query(WebOrders).filter(
+        WebOrders.user_id == current_user.id_users,
+        WebOrders.status == "PENDIENTE" # Solo las pendientes
+    ).order_by(WebOrders.created_at.desc()).all()
+
+    # Construimos la respuesta mapeando manualmente para evitar errores
+    results = []
+    for order in web_orders:
+        details_list = []
+        for d in order.details:
+            details_list.append(WebDetailResponse(
+                product_name=d.product.name if d.product else "Eliminado",
+                quantity=d.quantity,
+                unit_price=d.unit_price,
+                subtotal=d.subtotal,
+                comment=d.comment or ""
+            ))
+        
+        results.append(WebOrderResponse(
+            id_web_orders=order.id_web_orders,
+            customer_name=order.customer_name,
+            customer_phone=order.customer_phone,
+            customer_address=order.customer_address,
+            customer_notes=order.customer_notes or "",
+            total=order.total,
+            status=order.status,
+            created_at=order.created_at,
+            details=details_list
         ))
 
-    return resultado
+    return results
+
+
+# =============================================================================
+# 👨‍🍳 ACCEPT WEB ORDER -> CONVERTIR A ORDEN REAL (COCINA)
+# =============================================================================
+
+@router.post("/web/accept/{id_web_order}", response_model=OrderCreateResponse, status_code=status.HTTP_201_CREATED)
+async def aceptar_orden_web(
+    id_web_order: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    token: str = Depends(oauth2_scheme)
+):
+    """
+    Convierte una Pre-Orden Web en una Orden Real de Cocina.
+    1. Genera Ticket.
+    2. Asigna Mesa 1 (Kiosco).
+    3. Agrega prefijo 'external-menu-delivery-order' para Delivery.
+    4. Descuenta Inventario.
+    """
+    # ---------------------------------------------------------
+    # 1. Buscar la Pre-Orden
+    # ---------------------------------------------------------
+    from app.db.models import WebOrders, WebOrderDetails, Orders, OrdersDetails, Tables, Products
+    
+    web_order = db.query(WebOrders).filter(
+        WebOrders.id_web_orders == id_web_order,
+        WebOrders.user_id == current_user.id_users
+    ).first()
+
+    if not web_order:
+        raise HTTPException(status_code=404, detail="Pre-orden no encontrada")
+    
+    if web_order.status != "PENDIENTE":
+        raise HTTPException(status_code=400, detail=f"Esta orden ya está en estatus {web_order.status}")
+
+    # ---------------------------------------------------------
+    # 2. Configuración Inicial (Mesa y Ticket)
+    # ---------------------------------------------------------
+    
+    # A. Buscar Mesa 1 (Punto de Venta / Virtual)
+    mesa_kiosco = db.query(Tables).filter(
+        Tables.user_id == current_user.id_users, 
+        Tables.number == 1
+    ).first()
+    
+    if not mesa_kiosco:
+        raise HTTPException(400, "No se encontró la Mesa 1 para asignar la orden")
+
+    # B. Generar Siguiente Número de Ticket
+    last_ticket = db.query(Orders).filter(
+        Orders.user_id == current_user.id_users,
+        Orders.ticket_number.is_not(None)
+    ).order_by(Orders.ticket_number.desc()).first()
+    
+    next_ticket = (int(last_ticket.ticket_number) + 1) if (last_ticket and last_ticket.ticket_number) else 1
+
+    # ---------------------------------------------------------
+    # 3. Construcción del String 'orderscol' con el PREFIJO
+    # ---------------------------------------------------------
+    # Aquí cumplimos el requisito: "external-menu-delivery-order, (datos cliente)"
+    
+    info_cliente = (
+        f"Cliente: {web_order.customer_name} | "
+        f"Tel: {web_order.customer_phone} | "
+        f"Dir: {web_order.customer_address} | "
+        f"Notas: {web_order.customer_notes}"
+    )
+    
+    # 👇 EL PREFIJO QUE NECESITA EL FRONT 👇
+    texto_final_delivery = f"external-menu-delivery-order, {info_cliente}"
+
+    # Recopilar nombres de productos para la cabecera
+    nombres_prods = [d.product.name for d in web_order.details if d.product]
+
+    # ---------------------------------------------------------
+    # 4. Crear la ORDEN REAL (Tabla Orders)
+    # ---------------------------------------------------------
+    real_order = Orders(
+        mesa_id=mesa_kiosco.id_tables,
+        state=RoleOrders.Ocupado,
+        order_status=OrderStatusEnum.Pendiente, # Directo a Cocina
+        date_time=datetime.now(),
+        descuento="0",
+        total=web_order.total,
+        orderscol=texto_final_delivery, # ✅ Aquí va el prefijo y los datos
+        product_name=", ".join(nombres_prods),
+        user_id=current_user.id_users,
+        order_uuid=str(uuid4()),
+        metodo_pago=PaymentMethodEnum.efectivo, # Puedes cambiarlo si en web capturas método
+        ticket_number=next_ticket
+    )
+    
+    db.add(real_order)
+    db.flush() # Flush para obtener el ID de la nueva orden
+
+    # ---------------------------------------------------------
+    # 5. Migrar Detalles y Comentarios (Tabla OrdersDetails)
+    # ---------------------------------------------------------
+    details_response = []
+    items_inventory = []
+
+    for web_item in web_order.details:
+        # Crear detalle real
+        new_detail = OrdersDetails(
+            order_id=real_order.id_orders,
+            product_id=web_item.product_id,
+            quantity=web_item.quantity,
+            unit_price=web_item.unit_price,
+            subtotal=web_item.subtotal,
+            order_detail_status=OrderStatusEnum.Pendiente,
+            descuento_details="0",
+            comments=web_item.comment # ✅ Migramos el comentario del producto
+        )
+        db.add(new_detail)
+        
+        # Preparar datos para inventario
+        items_inventory.append({
+            "product_id": web_item.product_id, 
+            "quantity": web_item.quantity
+        })
+
+        # Preparar respuesta manual (para evitar errores Pydantic)
+        p_name = web_item.product.name if web_item.product else "Desconocido"
+        details_response.append({
+            "id_orders_details": 0, # Se generará al commit
+            "product_id": web_item.product_id,
+            "product_name": p_name,
+            "quantity": web_item.quantity,
+            "unit_price": web_item.unit_price,
+            "subtotal": web_item.subtotal,
+            "descuento_details": "0",
+            "order_detail_status": OrderStatusEnum.Pendiente,
+            "comments": web_item.comment
+        })
+
+    # ---------------------------------------------------------
+    # 6. Descontar Inventario (Microservicio)
+    # ---------------------------------------------------------
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        requests.post(
+            f"{INVENTORY_API_URL}/inventory/discount-stock-multiple/", 
+            json={"items": items_inventory, "ticket_number": next_ticket}, 
+            headers=headers,
+            verify=False 
+        )
+    except Exception as e:
+        print(f"⚠️ Error descontando inventario web: {e}")
+
+    # ---------------------------------------------------------
+    # 7. Finalizar
+    # ---------------------------------------------------------
+    
+    # Actualizar estatus de la web order para que no se procese 2 veces
+    web_order.status = "ACEPTADO"
+    
+    db.commit()
+    db.refresh(real_order)
+
+    # Retornar estructura compatible con OrderCreateResponse
+    return {
+        "id_orders": real_order.id_orders,
+        "order_uuid": real_order.order_uuid,
+        "mesa_id": real_order.mesa_id,
+        "mesa_number": 1,
+        "state": real_order.state,
+        "order_status": real_order.order_status,
+        "date_time": real_order.date_time,
+        "descuento": real_order.descuento,
+        "total": real_order.total,
+        "orderscol": real_order.orderscol,
+        "user_id": real_order.user_id,
+        "product_name": real_order.product_name,
+        "metodo_pago": real_order.metodo_pago,
+        "ticket_number": real_order.ticket_number,
+        "order_details": details_response
+    }

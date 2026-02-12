@@ -801,12 +801,62 @@ class DetailCommentInput(BaseModel):
     id_orders_details: int
     comment: str
 
-# Esquema para recibir la lista completa en el POST
+# Input para el Request (General + Detalles)
 class OrderCommentsRequest(BaseModel):
-    comments: List[DetailCommentInput]
+    general_comment: Optional[str] = None  # Se guardará en 'orderscol'
+    details_comments: List[DetailCommentInput] = []
 
 # Esquema para devolver los comentarios en el GET
 class OrderCommentResponse(BaseModel):
     id_orders_details: int
     product_name: str
     comment: Optional[str] = ""
+
+# Output para la Respuesta
+class OrderFullCommentsResponse(BaseModel):
+    order_uuid: str
+    general_comment: Optional[str] = ""
+    details_comments: List[dict] # Usamos dict para flexibilidad rápida
+
+
+# --- INPUTS (Lo que envía el cliente web) ---
+class WebItemInput(BaseModel):
+    product_id: int
+    quantity: int
+    comment: Optional[str] = ""
+
+class WebCustomerInput(BaseModel):
+    nombre: str
+    telefono: str
+    direccion: str
+    codigo_postal: str
+    referencias: Optional[str] = ""
+
+class WebOrderCreateRequest(BaseModel):
+    customer: WebCustomerInput
+    items: List[WebItemInput]
+
+# --- OUTPUTS (Lo que ve el restaurante) ---
+class WebDetailResponse(BaseModel):
+    product_name: str
+    quantity: int
+    unit_price: float
+    subtotal: float
+    comment: str
+
+    class Config:
+        from_attributes = True
+
+class WebOrderResponse(BaseModel):
+    id_web_orders: int
+    customer_name: str
+    customer_phone: str
+    customer_address: str
+    customer_notes: str
+    total: float
+    status: str
+    created_at: datetime
+    details: List[WebDetailResponse]
+
+    class Config:
+        from_attributes = True
