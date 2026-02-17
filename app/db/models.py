@@ -413,6 +413,8 @@ class WebOrders(Base):
     id_web_orders = Column(Integer, primary_key=True, index=True)
     uuid_restaurant = Column(String(100), nullable=False) # UUID del dueño/restaurante
     user_id = Column(Integer, ForeignKey("users.id_users")) # Relación con el dueño
+    order_uuid = Column(String(100), unique=True, index=True)
+    folio_web = Column(Integer, default=1)
     
     # Datos del Cliente (Usamos Text para que quepa todo lo que quieras)
     customer_name = Column(String(150))

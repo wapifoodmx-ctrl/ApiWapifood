@@ -850,6 +850,8 @@ class WebDetailResponse(BaseModel):
 class WebOrderResponse(BaseModel):
     id_web_orders: int
     customer_name: str
+    order_uuid: str
+    folio_web: int
     customer_phone: str
     customer_address: str
     customer_notes: str

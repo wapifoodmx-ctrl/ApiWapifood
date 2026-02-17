@@ -101,3 +101,13 @@ class PagosEnOrders(str, Enum):
     Tarjeta = "Tarjeta"
 
     
+class WebStatusOpciones(str, Enum):
+    PENDIENTE = "PENDIENTE"
+    PAGADO = "PAGADO"
+    CONFIRMADO = "CONFIRMADO"
+    DESCARTADO = "DESCARTADO"
+
+
+class WebOrderAction(str, Enum):
+    ACEPTAR = "ACEPTAR"       # Crea la orden real, descuenta inventario, etc.
+    DESCARTAR = "DESCARTAR"
