@@ -415,6 +415,7 @@ class WebOrders(Base):
     user_id = Column(Integer, ForeignKey("users.id_users")) # Relación con el dueño
     order_uuid = Column(String(100), unique=True, index=True)
     folio_web = Column(Integer, default=1)
+    pos_order_uuid = Column(String(100), nullable=True, index=True)
     
     # Datos del Cliente (Usamos Text para que quepa todo lo que quieras)
     customer_name = Column(String(150))
@@ -446,3 +447,13 @@ class WebOrderDetails(Base):
     # Relaciones
     web_order = relationship("WebOrders", back_populates="details")
     product = relationship("Products")
+
+
+class WebConfig(Base):
+    __tablename__ = "web_config"
+
+    id_web_config = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id_users"), unique=True) # Un solo registro por restaurante
+    
+    # 👇 ESTE ES TU INTERRUPTOR (True = Sí hay delivery, False = No hay)
+    is_delivery_active = Column(Boolean, default=True)

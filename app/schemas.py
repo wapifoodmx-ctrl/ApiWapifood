@@ -862,3 +862,7 @@ class WebOrderResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class WebConfigToggle(BaseModel):
+    is_delivery_active: bool

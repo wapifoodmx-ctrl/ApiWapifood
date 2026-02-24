@@ -8,7 +8,7 @@ import logging
 from uuid import uuid4, UUID
 from app.db.database import get_db
 from app.db.models import Orders as OrdersModel, Tables as TablesModel, Products as ProductsModel, OrdersDetails as OrderDetailsModel, User, Payments, WebOrders, WebOrderDetails, UserInfo
-from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem, OrderCommentResponse, OrderCommentsRequest, OrderFullCommentsResponse, WebItemInput, WebCustomerInput, WebOrderCreateRequest, WebDetailResponse, WebOrderResponse
+from app.schemas import Orders as OrdersSchema, OrdersResponse, OrdersCreate, OrderCreateResponse, OrderFinalizeResponse, OrdersDetails, OrderDetailsByUUIDResponse, OrderDetailItem, OrderCommentResponse, OrderCommentsRequest, OrderFullCommentsResponse, WebItemInput, WebCustomerInput, WebOrderCreateRequest, WebDetailResponse, WebOrderResponse, WebConfigToggle
 from app.enums import RoleOrders, TablesEnum, OrderStatusEnum, PlanType, PaymentStatus, SubscriptionAmount, PaymentMethodEnum
 from app.db.models import OrdersDetails as OrdersDetailsModel
 from app.db.models import Payments as PaymentsModel, UserConfirmationCode
@@ -2198,8 +2198,12 @@ async def aceptar_orden_web(
         "order_details": details_response
     }
 
+# =============================================================================
+# 2. PROCESAR PRE-ORDEN (ACEPTAR O DESCARTAR) - Devuelve datos de envío
+# =============================================================================
 
-@router.post("/web/process/{web_order_uuid}", response_model=Union[OrderCreateResponse, Dict[str, str]], status_code=status.HTTP_200_OK)
+# 👇 NOTA: Quitamos "response_model=..." para que nos deje devolver los datos del cliente libres
+@router.post("/web/process/{web_order_uuid}", status_code=status.HTTP_200_OK)
 async def gestionar_orden_web(
     web_order_uuid: str, 
     accion: WebOrderAction = Query(..., description="Elige 'ACEPTAR' para enviar a cocina o 'DESCARTAR' para rechazarla."),
@@ -2210,7 +2214,7 @@ async def gestionar_orden_web(
     """
     Gestiona una Pre-Orden Web:
     - DESCARTAR: Cambia estatus a 'RECHAZADO' (Desaparece de la lista).
-    - ACEPTAR: Convierte a Orden Real, genera Ticket y descuenta Inventario.
+    - ACEPTAR: Convierte a Orden Real, genera Ticket, descuenta Inventario y devuelve datos de envío.
     """
     from app.db.models import WebOrders, Orders, OrdersDetails, Tables, Products
     
@@ -2276,12 +2280,15 @@ async def gestionar_orden_web(
             orderscol=texto_final_delivery,
             product_name=", ".join(nombres_prods),
             user_id=current_user.id_users,
-            order_uuid=str(uuid4()),
+            order_uuid=str(uuid4()), # Este es el UUID nuevo de la orden POS
             metodo_pago=PaymentMethodEnum.efectivo,
             ticket_number=next_ticket
         )
         db.add(real_order)
         db.flush()
+
+        # 👇 NUEVA LÍNEA MAGICA: Vinculamos la orden web con la orden real
+        web_order.pos_order_uuid = real_order.order_uuid
 
         # 5. Migrar Detalles
         details_response = []
@@ -2332,9 +2339,11 @@ async def gestionar_orden_web(
         db.commit()
         db.refresh(real_order)
 
+        # 👇 AQUÍ DEVOLVEMOS TODOS LOS DATOS + LA INFO DE ENVÍO
         return {
             "id_orders": real_order.id_orders,
-            "order_uuid": real_order.order_uuid,
+            "order_uuid": real_order.order_uuid, # UUID nuevo
+            "web_order_uuid": web_order.order_uuid, # UUID original de la pre-orden web
             "mesa_id": real_order.mesa_id,
             "mesa_number": 1,
             "state": real_order.state,
@@ -2347,5 +2356,134 @@ async def gestionar_orden_web(
             "product_name": real_order.product_name,
             "metodo_pago": real_order.metodo_pago,
             "ticket_number": real_order.ticket_number,
-            "order_details": details_response
+            "order_details": details_response,
+            
+            # ✨ NUEVO: Mapeo de los datos del cliente para el FrontEnd ✨
+            "customer_data": {
+                "nombre": web_order.customer_name,
+                "telefono": web_order.customer_phone,
+                "direccion": web_order.customer_address,
+                "referencias": web_order.customer_notes
+            }
         }
+
+
+# =============================================================================
+# 3. CONSULTAR DATOS DE ENVÍO (Expira en 12 horas)
+# =============================================================================
+@router.get("/web/delivery-info/{uuid_busqueda}", status_code=status.HTTP_200_OK, summary="Obtener datos de envío (Expira en 12h)")
+async def obtener_datos_envio(
+    uuid_busqueda: str, # 👈 Ahora acepta cualquier UUID
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Obtiene la información de envío.
+    Puedes buscar enviando el UUID de la pre-orden web O el UUID de la orden real.
+    Expira en 12 horas por seguridad.
+    """
+    from app.db.models import WebOrders
+    from datetime import datetime, timedelta
+
+    # 1. Buscar la orden web por CUALQUIERA de los dos UUIDs
+    web_order = db.query(WebOrders).filter(
+        # 👇 BUSCA POR EL UUID WEB --- O --- POR EL UUID DE COCINA 👇
+        (WebOrders.order_uuid == uuid_busqueda) | (WebOrders.pos_order_uuid == uuid_busqueda),
+        WebOrders.user_id == current_user.id_users
+    ).first()
+
+    if not web_order:
+        raise HTTPException(status_code=200, detail="Orden no encontrada o no te pertenece.")
+
+    # 2. Lógica de Expiración (12 horas)
+    tiempo_transcurrido = datetime.now() - web_order.created_at
+    doce_horas = timedelta(hours=12)
+
+    # Si ya pasaron 12 horas
+    if tiempo_transcurrido > doce_horas:
+        return {
+            "web_order_uuid": web_order.order_uuid,
+            "pos_order_uuid": web_order.pos_order_uuid,
+            "folio_web": web_order.folio_web,
+            "status": web_order.status,
+            "created_at": web_order.created_at,
+            "message": "Los datos del cliente han sido ocultados por seguridad tras 12 horas.",
+            "customer_data": None
+        }
+
+    # 3. Si está dentro del tiempo, devuelve todo
+    return {
+        "web_order_uuid": web_order.order_uuid,
+        "pos_order_uuid": web_order.pos_order_uuid, # Te confirmamos cuál es la orden real
+        "folio_web": web_order.folio_web,
+        "status": web_order.status,
+        "created_at": web_order.created_at,
+        "message": "Datos de envío disponibles.",
+        "customer_data": {
+            "nombre": web_order.customer_name,
+            "telefono": web_order.customer_phone,
+            "direccion": web_order.customer_address,
+            "referencias": web_order.customer_notes
+        }
+    }
+
+
+
+# =============================================================================
+# 🟢 CONFIGURACIÓN WEB: TOGGLE DE DELIVERY
+# =============================================================================
+
+# 1. GET PÚBLICO: El frontend web consulta si hay delivery disponible
+@router.get("/web/status/delivery", status_code=status.HTTP_200_OK, summary="Consulta si el restaurante tiene Delivery activo")
+async def consultar_estado_delivery(
+    restaurant_uuid: str, # El UUID público del restaurante
+    db: Session = Depends(get_db)
+):
+    from app.db.models import User, WebConfig
+    
+    # Buscar al dueño
+    owner_user = db.query(User).filter(User.uuid == restaurant_uuid).first()
+    if not owner_user:
+        raise HTTPException(status_code=404, detail="Restaurante no encontrado")
+
+    # Buscar su configuración
+    config = db.query(WebConfig).filter(WebConfig.user_id == owner_user.id_users).first()
+    
+    # Si no tiene configuración guardada aún, asumimos que SÍ hay delivery (True)
+    estado = config.is_delivery_active if config else False
+
+    return {
+        "restaurant_uuid": restaurant_uuid,
+        "is_delivery_active": estado
+    }
+
+
+# 2. PUT PRIVADO: El dueño prende o apaga el Delivery
+@router.put("/web/status/delivery", status_code=status.HTTP_200_OK, summary="Enciende o apaga el Delivery")
+async def cambiar_estado_delivery(
+    payload: WebConfigToggle, # Recibe { "is_delivery_active": true/false }
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.db.models import WebConfig
+    
+    # Buscamos si el dueño ya tiene una fila de configuración
+    config = db.query(WebConfig).filter(WebConfig.user_id == current_user.id_users).first()
+
+    if config:
+        # Si ya existe, solo actualizamos el True/False
+        config.is_delivery_active = payload.is_delivery_active
+    else:
+        # Si es la primera vez que toca el botón, creamos la fila
+        config = WebConfig(
+            user_id=current_user.id_users,
+            is_delivery_active=payload.is_delivery_active
+        )
+        db.add(config)
+
+    db.commit()
+
+    return {
+        "message": "Estado de delivery actualizado",
+        "is_delivery_active": config.is_delivery_active
+    }
